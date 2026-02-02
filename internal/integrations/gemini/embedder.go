@@ -59,30 +59,12 @@ func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
 }
 
 // EmbedBatch generates embeddings for multiple texts.
+// Note: Gemini API doesn't support true batch embedding, so this calls Embed for each text.
 func (e *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
 	if len(texts) == 0 {
 		return nil, fmt.Errorf("texts cannot be empty")
 	}
 
-	em := e.client.EmbeddingModel(e.model)
-
-	// Convert texts to genai.Text
-	parts := make([]genai.Part, len(texts))
-	for i, text := range texts {
-		parts[i] = genai.Text(text)
-	}
-
-	res, err := em.EmbedContentWithTitle(ctx, "", parts...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate batch embeddings: %w", err)
-	}
-
-	if res.Embedding == nil || len(res.Embedding.Values) == 0 {
-		return nil, fmt.Errorf("empty embedding returned")
-	}
-
-	// Note: Gemini returns a single embedding for batch requests
-	// For individual embeddings, we need to call Embed for each text
 	embeddings := make([][]float32, len(texts))
 	for i, text := range texts {
 		embedding, err := e.Embed(ctx, text)

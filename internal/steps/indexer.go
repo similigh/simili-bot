@@ -81,7 +81,7 @@ func (s *Indexer) Run(ctx *pipeline.Context) error {
 	}
 
 	// Upsert to Qdrant
-	err = s.store.Upsert(collectionName, []*qdrant.Point{point})
+	err = s.store.Upsert(ctx.Ctx, collectionName, []*qdrant.Point{point})
 	if err != nil {
 		return fmt.Errorf("failed to index issue: %w", err)
 	}

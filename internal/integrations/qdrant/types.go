@@ -6,12 +6,13 @@
 // Package qdrant provides the vector database integration.
 package qdrant
 
+import "context"
+
 // Point represents a data point in the vector database.
 type Point struct {
-	ID       string                 `json:"id"`
-	Vector   []float32              `json:"vector"`
-	Payload  map[string]interface{} `json:"payload"`
-	MetaData map[string]interface{} `json:"metadata"`
+	ID      string                 `json:"id"`
+	Vector  []float32              `json:"vector"`
+	Payload map[string]interface{} `json:"payload"`
 }
 
 // SearchResult represents a single result from a similarity search.
@@ -25,19 +26,19 @@ type SearchResult struct {
 // VectorStore defines the interface for vector database operations.
 type VectorStore interface {
 	// CreateCollection creates a new collection if it doesn't exist.
-	CreateCollection(name string, dimension int) error
+	CreateCollection(ctx context.Context, name string, dimension int) error
 
 	// CollectionExists checks if a collection exists.
-	CollectionExists(name string) (bool, error)
+	CollectionExists(ctx context.Context, name string) (bool, error)
 
 	// Upsert inserts or updates points in the collection.
-	Upsert(collectionName string, points []*Point) error
+	Upsert(ctx context.Context, collectionName string, points []*Point) error
 
 	// Search finds the nearest neighbors for a given vector.
-	Search(collectionName string, vector []float32, limit int, threshold float64) ([]*SearchResult, error)
+	Search(ctx context.Context, collectionName string, vector []float32, limit int, threshold float64) ([]*SearchResult, error)
 
 	// Delete removes a point by ID.
-	Delete(collectionName string, id string) error
+	Delete(ctx context.Context, collectionName string, id string) error
 
 	// Close closes the connection to the database.
 	Close() error

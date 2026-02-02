@@ -7,6 +7,7 @@ package gemini
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -39,11 +40,11 @@ type SimilarIssueInput struct {
 
 // TriageResult holds the result of issue triage analysis.
 type TriageResult struct {
-	Quality         string // "good", "needs-improvement", "poor"
-	SuggestedLabels []string
-	Reasoning       string
-	IsDuplicate     bool
-	DuplicateReason string
+	Quality         string   `json:"quality"`          // "good", "needs-improvement", "poor"
+	SuggestedLabels []string `json:"suggested_labels"`
+	Reasoning       string   `json:"reasoning"`
+	IsDuplicate     bool     `json:"is_duplicate"`
+	DuplicateReason string   `json:"duplicate_reason"`
 }
 
 // NewLLMClient creates a new Gemini LLM client.
@@ -67,10 +68,12 @@ func (l *LLMClient) Close() error {
 
 // AnalyzeIssue performs triage analysis on an issue.
 func (l *LLMClient) AnalyzeIssue(ctx context.Context, issue *IssueInput) (*TriageResult, error) {
-	prompt := buildTriagePrompt(issue)
+	prompt := buildTriagePromptJSON(issue)
 
 	model := l.client.GenerativeModel(l.model)
 	model.SetTemperature(0.3) // Lower temperature for more consistent results
+	// Request JSON response for structured parsing
+	model.ResponseMIMEType = "application/json"
 
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
@@ -89,8 +92,11 @@ func (l *LLMClient) AnalyzeIssue(ctx context.Context, issue *IssueInput) (*Triag
 		}
 	}
 
-	// Parse the response into TriageResult
-	result := parseTriageResponse(responseText)
+	// Parse JSON response into TriageResult
+	result, err := parseTriageResponseJSON(responseText)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse LLM response: %w", err)
+	}
 	return result, nil
 }
 
@@ -125,9 +131,33 @@ func (l *LLMClient) GenerateResponse(ctx context.Context, similar []SimilarIssue
 	return strings.TrimSpace(responseText), nil
 }
 
-// parseTriageResponse parses the LLM response into a TriageResult.
-// This is a simple parser - in production, you might want structured output.
-func parseTriageResponse(response string) *TriageResult {
+// parseTriageResponseJSON parses the JSON LLM response into a TriageResult.
+func parseTriageResponseJSON(response string) (*TriageResult, error) {
+	var result TriageResult
+	if err := json.Unmarshal([]byte(response), &result); err != nil {
+		// If JSON parsing fails, fall back to legacy string parsing
+		return parseTriageResponseLegacy(response), nil
+	}
+
+	// Validate and normalize quality
+	switch strings.ToLower(result.Quality) {
+	case "good", "needs-improvement", "poor":
+		result.Quality = strings.ToLower(result.Quality)
+	default:
+		result.Quality = "good" // Default
+	}
+
+	// Ensure non-nil slices
+	if result.SuggestedLabels == nil {
+		result.SuggestedLabels = []string{}
+	}
+
+	return &result, nil
+}
+
+// parseTriageResponseLegacy is a fallback parser for non-JSON responses.
+// Deprecated: Use JSON structured output instead.
+func parseTriageResponseLegacy(response string) *TriageResult {
 	result := &TriageResult{
 		Quality:         "good", // Default
 		SuggestedLabels: []string{},

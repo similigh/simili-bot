@@ -6,6 +6,7 @@
 package gemini
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -24,10 +25,10 @@ func TestBuildTriagePrompt(t *testing.T) {
 	}
 
 	// Check that prompt contains key information
-	if !contains(prompt, issue.Title) {
+	if !strings.Contains(prompt, issue.Title) {
 		t.Error("Prompt should contain issue title")
 	}
-	if !contains(prompt, issue.Author) {
+	if !strings.Contains(prompt, issue.Author) {
 		t.Error("Prompt should contain author")
 	}
 }
@@ -57,10 +58,10 @@ func TestBuildResponsePrompt(t *testing.T) {
 	}
 
 	// Check that prompt contains issue information
-	if !contains(prompt, "#123") {
+	if !strings.Contains(prompt, "#123") {
 		t.Error("Prompt should contain first issue number")
 	}
-	if !contains(prompt, "#456") {
+	if !strings.Contains(prompt, "#456") {
 		t.Error("Prompt should contain second issue number")
 	}
 }
@@ -135,7 +136,7 @@ func TestParseTriageResponse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := parseTriageResponse(tt.response)
+			result := parseTriageResponseLegacy(tt.response)
 
 			if result.Quality != tt.expectedQuality {
 				t.Errorf("Expected quality %q, got %q", tt.expectedQuality, result.Quality)
@@ -152,15 +153,3 @@ func TestParseTriageResponse(t *testing.T) {
 	}
 }
 
-func contains(s, substr string) bool {
-	return len(s) > 0 && len(substr) > 0 && (s == substr || len(s) >= len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || containsMiddle(s, substr)))
-}
-
-func containsMiddle(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}

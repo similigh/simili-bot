@@ -47,7 +47,7 @@ func (s *VectorDBPrep) Run(ctx *pipeline.Context) error {
 		return nil
 	}
 
-	err := s.client.CreateCollection(collectionName, dimension)
+	err := s.client.CreateCollection(ctx.Ctx, collectionName, dimension)
 	if err != nil {
 		log.Printf("[vectordb_prep] Failed to ensure collection exists: %v", err)
 		return err

@@ -8,10 +8,12 @@ package qdrant
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	pb "github.com/qdrant/go-client/qdrant"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 )
@@ -26,16 +28,36 @@ type Client struct {
 }
 
 // NewClient creates a new Qdrant client.
+// URL can be in formats: "localhost:6334", "host:port", "https://cloud.qdrant.io:6334"
+// TLS is automatically enabled for URLs containing "https://" or cloud-like domains.
 func NewClient(url, apiKey string) (*Client, error) {
-	// Simple URL parsing - assumes host:port format for gRPC
-	// In production, might need more robust URL handling
+	// Determine target and TLS requirement
 	target := url
+	useTLS := false
 
-	// Create gRPC connection
-	// Note: For cloud Qdrant, you'd need TLS credentials.
-	// This insecure default is fine for local development/testing.
-	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	// Strip protocol if present and determine TLS
+	if strings.HasPrefix(url, "https://") {
+		target = strings.TrimPrefix(url, "https://")
+		useTLS = true
+	} else if strings.HasPrefix(url, "http://") {
+		target = strings.TrimPrefix(url, "http://")
+		useTLS = false
+	} else {
+		// No explicit protocol - check for cloud indicators
+		useTLS = strings.Contains(strings.ToLower(url), "cloud") ||
+			strings.Contains(strings.ToLower(url), ".qdrant.io")
+	}
+
+	// Create gRPC connection with appropriate credentials
+	var opts []grpc.DialOption
+	if useTLS {
+		opts = []grpc.DialOption{
+			grpc.WithTransportCredentials(credentials.NewTLS(nil)),
+		}
+	} else {
+		opts = []grpc.DialOption{
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		}
 	}
 
 	conn, err := grpc.NewClient(target, opts...)
@@ -57,9 +79,9 @@ func (c *Client) Close() error {
 	return c.conn.Close()
 }
 
-// ctxWithAuth returns a context with API key and timeout.
-func (c *Client) ctxWithAuth() (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+// ctxWithAuth adds authentication to an existing context with timeout.
+func (c *Client) ctxWithAuth(parent context.Context) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(parent, c.timeout)
 	if c.apiKey != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, "api-key", c.apiKey)
 	}
@@ -67,12 +89,12 @@ func (c *Client) ctxWithAuth() (context.Context, context.CancelFunc) {
 }
 
 // CreateCollection creates a new collection if it doesn't exist.
-func (c *Client) CreateCollection(name string, dimension int) error {
-	ctx, cancel := c.ctxWithAuth()
+func (c *Client) CreateCollection(ctx context.Context, name string, dimension int) error {
+	authCtx, cancel := c.ctxWithAuth(ctx)
 	defer cancel()
 
 	// Check if exists first
-	exists, err := c.CollectionExists(name)
+	exists, err := c.CollectionExists(ctx, name)
 	if err != nil {
 		return err
 	}
@@ -81,7 +103,7 @@ func (c *Client) CreateCollection(name string, dimension int) error {
 	}
 
 	// Create collection
-	_, err = c.collections.Create(ctx, &pb.CreateCollection{
+	_, err = c.collections.Create(authCtx, &pb.CreateCollection{
 		CollectionName: name,
 		VectorsConfig: &pb.VectorsConfig{
 			Config: &pb.VectorsConfig_Params{
@@ -100,11 +122,11 @@ func (c *Client) CreateCollection(name string, dimension int) error {
 }
 
 // CollectionExists checks if a collection exists.
-func (c *Client) CollectionExists(name string) (bool, error) {
-	ctx, cancel := c.ctxWithAuth()
+func (c *Client) CollectionExists(ctx context.Context, name string) (bool, error) {
+	authCtx, cancel := c.ctxWithAuth(ctx)
 	defer cancel()
 
-	resp, err := c.collections.List(ctx, &pb.ListCollectionsRequest{})
+	resp, err := c.collections.List(authCtx, &pb.ListCollectionsRequest{})
 	if err != nil {
 		return false, fmt.Errorf("failed to list collections: %w", err)
 	}
@@ -119,8 +141,8 @@ func (c *Client) CollectionExists(name string) (bool, error) {
 }
 
 // Upsert inserts or updates points in the collection.
-func (c *Client) Upsert(collectionName string, points []*Point) error {
-	ctx, cancel := c.ctxWithAuth()
+func (c *Client) Upsert(ctx context.Context, collectionName string, points []*Point) error {
+	authCtx, cancel := c.ctxWithAuth(ctx)
 	defer cancel()
 
 	qPoints := make([]*pb.PointStruct, len(points))
@@ -145,7 +167,7 @@ func (c *Client) Upsert(collectionName string, points []*Point) error {
 		}
 	}
 
-	_, err := c.points.Upsert(ctx, &pb.UpsertPoints{
+	_, err := c.points.Upsert(authCtx, &pb.UpsertPoints{
 		CollectionName: collectionName,
 		Points:         qPoints,
 	})
@@ -157,12 +179,12 @@ func (c *Client) Upsert(collectionName string, points []*Point) error {
 }
 
 // Search finds the nearest neighbors for a given vector.
-func (c *Client) Search(collectionName string, vector []float32, limit int, threshold float64) ([]*SearchResult, error) {
-	ctx, cancel := c.ctxWithAuth()
+func (c *Client) Search(ctx context.Context, collectionName string, vector []float32, limit int, threshold float64) ([]*SearchResult, error) {
+	authCtx, cancel := c.ctxWithAuth(ctx)
 	defer cancel()
 
 	scoreThreshold := float32(threshold)
-	resp, err := c.points.Search(ctx, &pb.SearchPoints{
+	resp, err := c.points.Search(authCtx, &pb.SearchPoints{
 		CollectionName: collectionName,
 		Vector:         vector,
 		Limit:          uint64(limit),
@@ -199,8 +221,8 @@ func (c *Client) Search(collectionName string, vector []float32, limit int, thre
 }
 
 // Delete removes a point by ID.
-func (c *Client) Delete(collectionName string, id string) error {
-	ctx, cancel := c.ctxWithAuth()
+func (c *Client) Delete(ctx context.Context, collectionName string, id string) error {
+	authCtx, cancel := c.ctxWithAuth(ctx)
 	defer cancel()
 
 	// Handle UUID vs Num ID logic if needed, simplify for now assuming UUID
@@ -210,7 +232,7 @@ func (c *Client) Delete(collectionName string, id string) error {
 		},
 	}
 
-	_, err := c.points.Delete(ctx, &pb.DeletePoints{
+	_, err := c.points.Delete(authCtx, &pb.DeletePoints{
 		CollectionName: collectionName,
 		Points: &pb.PointsSelector{
 			PointsSelectorOneOf: &pb.PointsSelector_Points{

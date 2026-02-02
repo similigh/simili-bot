@@ -65,11 +65,16 @@ func (s *ActionExecutor) Run(ctx *pipeline.Context) error {
 		}
 	}
 
-	// 2. Transfer logic (not implemented in client fully yet)
+	// 2. Transfer issue to another repository
 	if ctx.TransferTarget != "" {
-		// Just log for now as per previous TODO
-		log.Printf("[action_executor] Transfer to %s scheduled (API execution pending)", ctx.TransferTarget)
-		ctx.Result.TransferTarget = ctx.TransferTarget
+		err := s.client.TransferIssue(ctx.Ctx, ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number, ctx.TransferTarget)
+		if err != nil {
+			log.Printf("[action_executor] Failed to transfer issue to %s: %v", ctx.TransferTarget, err)
+			ctx.Result.Errors = append(ctx.Result.Errors, err)
+		} else {
+			log.Printf("[action_executor] Transferred issue #%d to %s", ctx.Issue.Number, ctx.TransferTarget)
+			ctx.Result.TransferTarget = ctx.TransferTarget
+		}
 	}
 
 	// 3. Apply labels

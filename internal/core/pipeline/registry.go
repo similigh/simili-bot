@@ -35,6 +35,39 @@ type Dependencies struct {
 	DryRun      bool
 }
 
+// Close releases any resources held by the dependencies.
+// It is safe to call multiple times; subsequent calls will be no-ops
+// once all underlying resources have been closed.
+func (d *Dependencies) Close() error {
+	if d == nil {
+		return nil
+	}
+
+	var firstErr error
+
+	if d.Embedder != nil {
+		if err := d.Embedder.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+
+	if d.LLMClient != nil {
+		if err := d.LLMClient.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+
+	if d.VectorStore != nil {
+		if err := d.VectorStore.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+
+	// GitHub client doesn't have a Close method in go-github
+
+	return firstErr
+}
+
 // NewRegistry creates a new step registry.
 func NewRegistry() *Registry {
 	return &Registry{

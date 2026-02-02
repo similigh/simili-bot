@@ -56,7 +56,7 @@ func (s *SimilaritySearch) Run(ctx *pipeline.Context) error {
 	}
 
 	// Search in Qdrant
-	results, err := s.store.Search(collectionName, embedding, limit, threshold)
+	results, err := s.store.Search(ctx.Ctx, collectionName, embedding, limit, threshold)
 	if err != nil {
 		// Log error but don't fail pipeline? Or fail?
 		// Failing is probably safer so we know somethings wrong.
@@ -65,18 +65,29 @@ func (s *SimilaritySearch) Run(ctx *pipeline.Context) error {
 
 	foundIssues := make([]pipeline.SimilarIssue, 0, len(results))
 	for _, res := range results {
-		// Filter out the current issue itself if it's already indexed
-		// Need to compare metadata
+		// Safely extract payload fields with type checking
 		resNumberFloat, ok := res.Payload["number"].(float64)
-		if ok && int(resNumberFloat) == ctx.Issue.Number && res.Payload["repo"] == ctx.Issue.Repo {
+		if !ok {
+			log.Printf("[similarity_search] WARNING: Invalid number type in payload, skipping result")
 			continue
 		}
 
+		// Filter out the current issue itself if it's already indexed
+		resRepo, _ := res.Payload["repo"].(string)
+		if int(resNumberFloat) == ctx.Issue.Number && resRepo == ctx.Issue.Repo {
+			continue
+		}
+
+		// Safely extract other fields
+		title, _ := res.Payload["title"].(string)
+		url, _ := res.Payload["url"].(string)
+		state, _ := res.Payload["state"].(string)
+
 		issue := pipeline.SimilarIssue{
 			Number:     int(resNumberFloat),
-			Title:      fmt.Sprintf("%v", res.Payload["title"]),
-			URL:        fmt.Sprintf("%v", res.Payload["url"]),
-			State:      fmt.Sprintf("%v", res.Payload["state"]),
+			Title:      title,
+			URL:        url,
+			State:      state,
 			Similarity: float64(res.Score),
 		}
 		foundIssues = append(foundIssues, issue)

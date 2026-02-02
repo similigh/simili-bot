@@ -8,6 +8,7 @@ package github
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/google/go-github/v60/github"
 )
@@ -29,6 +30,10 @@ func (c *Client) GetIssue(ctx context.Context, org, repo string, number int) (*g
 
 // CreateComment posts a comment on an issue.
 func (c *Client) CreateComment(ctx context.Context, org, repo string, number int, body string) error {
+	if strings.TrimSpace(body) == "" {
+		return fmt.Errorf("comment body cannot be empty")
+	}
+
 	comment := &github.IssueComment{
 		Body: github.String(body),
 	}
@@ -41,6 +46,10 @@ func (c *Client) CreateComment(ctx context.Context, org, repo string, number int
 
 // AddLabels adds labels to an issue.
 func (c *Client) AddLabels(ctx context.Context, org, repo string, number int, labels []string) error {
+	if len(labels) == 0 {
+		return fmt.Errorf("labels cannot be empty")
+	}
+
 	_, _, err := c.client.Issues.AddLabelsToIssue(ctx, org, repo, number, labels)
 	if err != nil {
 		return fmt.Errorf("failed to add labels: %w", err)
@@ -50,23 +59,21 @@ func (c *Client) AddLabels(ctx context.Context, org, repo string, number int, la
 
 // TransferIssue transfers an issue to another repository.
 // Note: Transferring issues via API requires the user to have admin access.
-// We use the GraphQL mutation typically, but Go SDK supports Transfer (beta/preview).
-// However, go-github implements it via `Issues.Transfer`.
-// NOTE: GitHub's Transfer API is tricky. Issues can be transferred within org or between users.
-// We need target repo name. But Transfer API takes `new_owner` and `new_name`. Not just "target repo" string.
-// For Simili, we usually want to move to another repo in SAME org or DIFFERENT org.
-// The `pipeline.Context` provides `TransferTarget` which is likely "org/repo".
+// targetRepo should be in "owner/repo" format.
+//
+// TODO: GitHub's REST API for issue transfers is complex and may require GraphQL.
+// This is not yet implemented. See https://docs.github.com/en/graphql/reference/mutations#transferissue
 func (c *Client) TransferIssue(ctx context.Context, org, repo string, number int, targetRepo string) error {
-	// targetRepo is expected to be "owner/name" or just "name" (implies same owner).
-	// We need to parse it. (TODO: Add parser helper or assume "owner/name" format)
+	// Validate input format
+	parts := strings.Split(targetRepo, "/")
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid targetRepo format: expected 'owner/repo', got '%s'", targetRepo)
+	}
 
-	// Check if target is "owner/name"
-	// For simplicity, let's assume valid input for now.
+	if parts[0] == "" || parts[1] == "" {
+		return fmt.Errorf("invalid targetRepo: owner and repo cannot be empty")
+	}
 
-	// Actually go-github Issues.Transfer takes (ctx, owner, repo, number, input).
-	// Input has NewOwner and NewName.
-
-	// We'll need to implement parsing logic later or assume strict input.
-	// Leaving unimplemented for now or just simple logic.
-	return fmt.Errorf("transfer not implemented yet")
+	// Transfer API is not implemented yet
+	return fmt.Errorf("issue transfer not yet implemented - requires GraphQL API integration")
 }
