@@ -1,111 +1,43 @@
-# Single Repository Setup
+# Setting Up Simili-Bot for a Single Repository
 
-This guide explains how to set up Simili-Bot for a **single repository**.
+This guide details the steps to integrate Simili-Bot into a standalone repository.
 
 ## Prerequisites
 
-1.  A GitHub repository
-2.  A Qdrant Cloud account (free tier available: [cloud.qdrant.io](https://cloud.qdrant.io/))
-3.  A Gemini API key (free tier available: [ai.google.dev](https://ai.google.dev/))
+- Access to the repository with permissions to manage workflows and secrets.
+- A **Google Gemini API Key** for embedding generation.
+- A **Qdrant** instance (Cloud or self-hosted) for vector storage.
 
----
+## Step 1: Configure Secrets
 
-## Step 1: Add Secrets
+Navigate to **Settings > Secrets and variables > Actions** in your repository and add the following secrets:
 
-Go to your repository's **Settings > Secrets and variables > Actions** and add:
+- `GEMINI_API_KEY`
+- `QDRANT_URL`
+- `QDRANT_API_KEY`
 
-| Secret Name      | Description                                |
-| ---------------- | ------------------------------------------ |
-| `GEMINI_API_KEY` | Your Gemini API key for embeddings         |
-| `QDRANT_URL`     | Your Qdrant cluster URL (e.g., `https://...`) |
-| `QDRANT_API_KEY` | Your Qdrant API key                        |
+## Step 2: Add Configuration
 
----
+Create a file named `.github/simili.yaml` in your repository root.
 
-## Step 2: Create Configuration File
+[View Example Configuration](./examples/single-repo/simili.yaml)
 
-Create `.github/simili.yaml` in your repository:
+## Step 3: Create Workflow
 
-```yaml
-# .github/simili.yaml
+Create a GitHub Actions workflow file (e.g., `.github/workflows/simili.yml`) to trigger the bot on issue events.
 
-qdrant:
-  url: "${QDRANT_URL}"
-  api_key: "${QDRANT_API_KEY}"
-  collection: "my-repo-issues"  # Unique name for this repo
+[View Example Workflow](./examples/single-repo/workflow.yml)
 
-embedding:
-  provider: "gemini"
-  api_key: "${GEMINI_API_KEY}"
+## CLI For Backfilling
 
-# Use a preset workflow for simplicity
-workflow: "issue-triage"
+If you are adding Simili-Bot to a repository with existing issues, you can use the CLI to index them.
 
-defaults:
-  similarity_threshold: 0.65
-  max_similar_to_show: 5
+1.  **Install the Extension**:
+    ```bash
+    gh extension install similigh/simili-bot
+    ```
 
-# Optional: specify repository explicitly (can be omitted for single-repo mode)
-repositories:
-  - org: "your-org"
-    repo: "your-repo"
-    enabled: true
-```
-
----
-
-## Step 3: Create Workflow File
-
-Create `.github/workflows/simili.yml`:
-
-```yaml
-name: Simili Issue Intelligence
-
-on:
-  issues:
-    types: [opened, edited, closed, reopened, deleted]
-
-jobs:
-  process:
-    runs-on: ubuntu-latest
-    permissions:
-      issues: write
-      contents: read
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: similigh/simili-bot@v1
-        with:
-          config_path: .github/simili.yaml
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          QDRANT_URL: ${{ secrets.QDRANT_URL }}
-          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
-```
-
----
-
-## Step 4: Index Existing Issues (Optional)
-
-If you have existing issues, you can index them using the CLI:
-
-```bash
-# Install the CLI
-gh extension install similigh/simili-bot
-
-# Index all open issues
-gh simili index --repo owner/repo --config .github/simili.yaml
-```
-
----
-
-## Configuration Options
-
-| Option                  | Description                          | Default |
-| ----------------------- | ------------------------------------ | ------- |
-| `similarity_threshold`  | Minimum similarity score (0-1)       | `0.65`  |
-| `max_similar_to_show`   | Maximum similar issues to display    | `5`     |
-| `workflow`              | Preset workflow name                 | `null`  |
-
-See the [full configuration reference](./config-reference.md) for all options.
+2.  **Index Issues**:
+    ```bash
+    gh simili index --repo owner/repo --config .github/simili.yaml
+    ```

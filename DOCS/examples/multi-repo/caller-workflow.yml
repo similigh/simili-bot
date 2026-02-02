@@ -1,0 +1,15 @@
+name: Issue Triage
+
+on:
+  issues:
+    types: [opened, edited, closed, reopened, deleted]
+
+jobs:
+  call-simili-workflow:
+    uses: my-org/shared-config/.github/workflows/simili.yml@main
+    with:
+      config_path: .github/simili.yaml
+    secrets:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      QDRANT_URL: ${{ secrets.QDRANT_URL }}
+      QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
