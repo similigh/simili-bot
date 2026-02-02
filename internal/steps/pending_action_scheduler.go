@@ -22,9 +22,13 @@ type PendingActionScheduler struct {
 
 // NewPendingActionScheduler creates a new PendingActionScheduler step.
 func NewPendingActionScheduler(deps *pipeline.Dependencies) *PendingActionScheduler {
-	// For now, we use a local directory for state. In the future, this could be a git branch.
+	// Use env var if set, otherwise default to local directory
+	stateDir := os.Getenv("SIMILI_PENDING_STATE_DIR")
+	if stateDir == "" {
+		stateDir = ".simili/pending"
+	}
 	return &PendingActionScheduler{
-		stateDir: ".simili/pending",
+		stateDir: stateDir,
 	}
 }
 

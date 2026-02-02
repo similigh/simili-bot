@@ -8,6 +8,7 @@ package commands
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -30,7 +31,11 @@ func (s *statusReportingStep) Name() string {
 
 func (s *statusReportingStep) Run(ctx *pipeline.Context) error {
 	s.statusChan <- tui.PipelineStatusMsg{Step: s.Name(), Status: "started", Message: "Starting..."}
-	time.Sleep(100 * time.Millisecond) // Artificial delay for visual effect
+
+	// Artificial delay for visual effect, can be disabled via env var
+	if os.Getenv("SIMILI_NO_UI_DELAY") == "" {
+		time.Sleep(100 * time.Millisecond)
+	}
 
 	err := s.inner.Run(ctx)
 
@@ -79,6 +84,10 @@ func runPipeline(p *tea.Program, deps *pipeline.Dependencies, stepNames []string
 	}
 
 	// Marshal result to JSON
-	resultBytes, _ := json.MarshalIndent(pCtx.Result, "", "  ")
+	resultBytes, err := json.MarshalIndent(pCtx.Result, "", "  ")
+	if err != nil {
+		p.Send(tui.ResultMsg{Success: false, Output: err.Error()})
+		return
+	}
 	p.Send(tui.ResultMsg{Success: true, Output: string(resultBytes)})
 }

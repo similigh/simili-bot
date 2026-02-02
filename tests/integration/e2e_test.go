@@ -15,7 +15,9 @@ import (
 	"github.com/similigh/simili-bot/internal/steps"
 )
 
-// Mock mocks the pipeline.Step interface.
+// MockStep mocks the pipeline.Step interface.
+// This is provided for future test scenarios where we need to mock specific steps.
+// Currently, the E2E test uses real pipeline steps to verify end-to-end behavior.
 type MockStep struct {
 	NameFunc func() string
 	RunFunc  func(ctx *pipeline.Context) error

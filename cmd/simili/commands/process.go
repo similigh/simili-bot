@@ -115,12 +115,14 @@ func runProcess() {
 			DryRun: dryRun,
 		}
 
-		// Initialize clients (ignoring errors for this rough cut - proper error handling needed)
+		// Initialize clients with error logging
 		// Embedder
 		if apiKey := os.Getenv("GEMINI_API_KEY"); apiKey != "" {
 			embedder, err := gemini.NewEmbedder(apiKey)
 			if err == nil {
 				deps.Embedder = embedder
+			} else {
+				fmt.Printf("Warning: Failed to initialize Gemini embedder: %v\n", err)
 			}
 		}
 
@@ -135,6 +137,8 @@ func runProcess() {
 		qdrantClient, err := qdrant.NewClient(qURL, qKey)
 		if err == nil {
 			deps.VectorStore = qdrantClient
+		} else {
+			fmt.Printf("Warning: Failed to initialize Qdrant client: %v\n", err)
 		}
 
 		// GitHub Client
@@ -148,6 +152,8 @@ func runProcess() {
 			llm, err := gemini.NewLLMClient(apiKey)
 			if err == nil {
 				deps.LLMClient = llm
+			} else {
+				fmt.Printf("Warning: Failed to initialize Gemini LLM client: %v\n", err)
 			}
 		}
 
@@ -158,11 +164,7 @@ func runProcess() {
 	}()
 
 	if _, err := p.Run(); err != nil {
-		fmt.Printf("Alas, there's been an error: %v", err)
+		fmt.Printf("Error running TUI: %v\n", err)
 		os.Exit(1)
 	}
 }
-
-// Importing steps here to register them.
-// But wait, `runPipeline` needs `steps.RegisterAll`.
-// I will need to edit the import block.

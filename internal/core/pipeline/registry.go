@@ -118,6 +118,7 @@ var Presets = map[string][]string{
 		"triage",
 		"response_builder",
 		"action_executor",
+		"pending_action_scheduler",
 		"indexer",
 	},
 

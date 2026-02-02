@@ -124,6 +124,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.waitForActivity()
 
 	case ResultMsg:
+		// Print the final output before quitting so the user can see the result
+		if msg.Output != "" {
+			fmt.Println("\n" + msg.Output)
+		}
 		m.quitting = true
 		return m, tea.Quit
 	}
@@ -133,11 +137,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) waitForActivity() tea.Cmd {
 	return func() tea.Msg {
-		msg, ok := <-m.statusChan
-		if !ok {
-			return ResultMsg{Success: true}
+		select {
+		case msg, ok := <-m.statusChan:
+			if !ok {
+				return ResultMsg{Success: true}
+			}
+			return msg
+		case <-time.After(30 * time.Second):
+			// Timeout waiting for pipeline activity
+			return ResultMsg{
+				Success: false,
+				Output:  "pipeline timed out waiting for activity",
+			}
 		}
-		return msg
 	}
 }
 
@@ -172,7 +184,7 @@ func (m Model) View() string {
 			prefix = "✗ "
 			style = errorStepStyle
 		case "skipped":
-			prefix = "- "
+			prefix = "○ "
 			style = stepStyle.Faint(true)
 		}
 

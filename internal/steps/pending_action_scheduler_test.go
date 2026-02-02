@@ -57,7 +57,9 @@ func TestPendingActionScheduler_Run(t *testing.T) {
 	// Verify content
 	content, _ := os.ReadFile(expectedFile)
 	var action PendingAction
-	json.Unmarshal(content, &action)
+	if err := json.Unmarshal(content, &action); err != nil {
+		t.Fatalf("Failed to unmarshal pending action: %v", err)
+	}
 
 	if action.IssueNumber != 123 {
 		t.Errorf("Expected issue number 123, got %d", action.IssueNumber)
