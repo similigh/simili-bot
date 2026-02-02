@@ -1,0 +1,93 @@
+name: 🐛 Bug Report
+description: Report a bug or unexpected behavior
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the form below.
+        
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Tell us what happened...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Configure simili with...
+        2. Create an issue with...
+        3. See error...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: Your simili.yaml configuration (remove sensitive values)
+      render: yaml
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Any relevant logs or error messages
+      render: shell
+
+  - type: dropdown
+    id: version
+    attributes:
+      label: Simili Version
+      description: What version of Simili are you using?
+      options:
+        - v0.0.1 (latest)
+        - Other (please specify in description)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      description: Where are you running Simili?
+      options:
+        - GitHub Actions
+        - CLI (local)
+        - CLI (CI/CD)
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues to ensure this bug hasn't been reported
+          required: true
+        - label: I have removed any sensitive information from logs and config
+          required: true

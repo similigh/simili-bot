@@ -1,0 +1,21 @@
+title: "💡 Ideas"
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share your ideas for improving Simili!
+        
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea Description
+      description: Describe your idea in detail
+    validations:
+      required: true
+
+  - type: textarea
+    id: benefit
+    attributes:
+      label: Potential Benefits
+      description: How would this benefit users?
