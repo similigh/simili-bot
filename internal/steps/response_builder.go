@@ -45,7 +45,7 @@ func (s *ResponseBuilder) Run(ctx *pipeline.Context) error {
 
 	// Transfer notification
 	if ctx.TransferTarget != "" {
-		parts = append(parts, fmt.Sprintf("## 📦 Transfer Suggested\n"))
+		parts = append(parts, "## 📦 Transfer Suggested\n")
 		parts = append(parts, fmt.Sprintf("This issue may belong in **%s**.\n", ctx.TransferTarget))
 	}
 
