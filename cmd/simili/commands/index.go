@@ -138,7 +138,7 @@ func runIndex(cmd *cobra.Command, args []string) {
 		go func(id int) {
 			defer wg.Done()
 			for job := range jobs {
-				processIssue(ctx, id, job.Issue, ghClient, geminiClient, qdrantClient, splitter, cfg.Qdrant.Collection, org, repoName)
+				processIssue(ctx, id, job.Issue, ghClient, geminiClient, qdrantClient, splitter, cfg.Qdrant.Collection, org, repoName, indexDryRun)
 			}
 		}(i)
 	}
@@ -192,25 +192,49 @@ func runIndex(cmd *cobra.Command, args []string) {
 	log.Println("Indexing complete.")
 }
 
-func processIssue(ctx context.Context, workerID int, issue *github.Issue, gh *similiGithub.Client, em *gemini.Embedder, qd *qdrant.Client, splitter *text.RecursiveCharacterSplitter, collection, org, repo string) {
-	// 1. Fetch Comments
-	comments, _, err := gh.ListComments(ctx, org, repo, issue.GetNumber(), &github.IssueListCommentsOptions{
-		ListOptions: github.ListOptions{PerPage: 100},
-	})
-	if err != nil {
-		log.Printf("[Worker %d] Error fetching comments for #%d: %v", workerID, issue.GetNumber(), err)
-		return
+func processIssue(ctx context.Context, workerID int, issue *github.Issue, gh *similiGithub.Client, em *gemini.Embedder, qd *qdrant.Client, splitter *text.RecursiveCharacterSplitter, collection, org, repo string, dryRun bool) {
+	// 1. Fetch Comments (with pagination)
+	var allComments []*github.IssueComment
+	page := 1
+	for {
+		comments, resp, err := gh.ListComments(ctx, org, repo, issue.GetNumber(), &github.IssueListCommentsOptions{
+			ListOptions: github.ListOptions{PerPage: 100, Page: page},
+		})
+		if err != nil {
+			log.Printf("[Worker %d] Error fetching comments for #%d: %v", workerID, issue.GetNumber(), err)
+			return
+		}
+		allComments = append(allComments, comments...)
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		page = resp.NextPage
 	}
 
 	// 2. Aggregate Text
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("Title: %s\n\n", issue.GetTitle()))
-	sb.WriteString(fmt.Sprintf("Body: %s\n\n", issue.GetBody()))
-	if len(comments) > 0 {
-		sb.WriteString("Comments:\n")
-		for _, c := range comments {
-			sb.WriteString(fmt.Sprintf("- %s: %s\n", c.User.GetLogin(), c.GetBody()))
+
+	issueBody := strings.TrimSpace(issue.GetBody())
+	if issueBody != "" {
+		sb.WriteString(fmt.Sprintf("Body: %s\n\n", issueBody))
+	}
+
+	hasCommentContent := false
+	for _, c := range allComments {
+		commentBody := strings.TrimSpace(c.GetBody())
+		if commentBody == "" {
+			continue
 		}
+		if !hasCommentContent {
+			sb.WriteString("Comments:\n")
+			hasCommentContent = true
+		}
+		author := "deleted-user"
+		if c.User != nil {
+			author = c.User.GetLogin()
+		}
+		sb.WriteString(fmt.Sprintf("- %s: %s\n", author, commentBody))
 	}
 
 	fullText := sb.String()
@@ -226,7 +250,7 @@ func processIssue(ctx context.Context, workerID int, issue *github.Issue, gh *si
 	}
 
 	// 5. Upsert
-	if indexDryRun {
+	if dryRun {
 		log.Printf("[DryRun] Would upsert #%d (%d chunks)", issue.GetNumber(), len(chunks))
 		return
 	}

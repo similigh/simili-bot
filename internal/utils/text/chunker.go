@@ -63,16 +63,22 @@ func (s *RecursiveCharacterSplitter) split(text string, separators []string) []s
 	for _, split := range splits {
 		if len(currentChunk)+len(split)+len(separator) > s.config.ChunkSize {
 			if currentChunk != "" {
-				finalChunks = append(finalChunks, currentChunk)
-				// Apply overlap logic here if needed, for simplicity we just start new chunk
-				// Ideally, we should keep the last N chars equal to overlap
-				// Improving simple implementation to include overlap
-				// Start new chunk with overlap from previous
-				// Note: complex overlap logic with separators is tricky,
-				// for this implementation we'll keep it simple: just reset.
-				// To do it properly requires re-adding words.
-				// Let's stick to a simpler "accumulate until full" approach for now.
-				currentChunk = ""
+				prevChunk := currentChunk
+				finalChunks = append(finalChunks, prevChunk)
+
+				// Start new chunk with overlap from the end of the previous chunk
+				overlap := s.config.ChunkOverlap
+				if overlap > 0 {
+					runes := []rune(prevChunk)
+					if overlap >= len(runes) {
+						// If overlap is larger than the chunk, reuse the whole chunk
+						currentChunk = prevChunk
+					} else {
+						currentChunk = string(runes[len(runes)-overlap:])
+					}
+				} else {
+					currentChunk = ""
+				}
 			}
 		}
 

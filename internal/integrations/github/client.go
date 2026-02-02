@@ -87,10 +87,18 @@ func (c *Client) ListIssues(ctx context.Context, org, repo string, opts *github.
 			State: "all",
 		}
 	}
-	return c.client.Issues.ListByRepo(ctx, org, repo, opts)
+	issues, resp, err := c.client.Issues.ListByRepo(ctx, org, repo, opts)
+	if err != nil {
+		return nil, resp, fmt.Errorf("failed to list issues for %s/%s: %w", org, repo, err)
+	}
+	return issues, resp, nil
 }
 
 // ListComments fetches comments for a specific issue.
 func (c *Client) ListComments(ctx context.Context, org, repo string, number int, opts *github.IssueListCommentsOptions) ([]*github.IssueComment, *github.Response, error) {
-	return c.client.Issues.ListComments(ctx, org, repo, number, opts)
+	comments, resp, err := c.client.Issues.ListComments(ctx, org, repo, number, opts)
+	if err != nil {
+		return nil, resp, fmt.Errorf("failed to list comments for issue #%d in %s/%s: %w", number, org, repo, err)
+	}
+	return comments, resp, nil
 }
