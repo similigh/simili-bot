@@ -77,3 +77,20 @@ func (c *Client) TransferIssue(ctx context.Context, org, repo string, number int
 	// Transfer API is not implemented yet
 	return fmt.Errorf("issue transfer not yet implemented - requires GraphQL API integration")
 }
+
+// ListIssues fetches a list of issues from the repository.
+// options can be used to filter by state, labels, etc.
+// If options is nil, default options are used.
+func (c *Client) ListIssues(ctx context.Context, org, repo string, opts *github.IssueListByRepoOptions) ([]*github.Issue, *github.Response, error) {
+	if opts == nil {
+		opts = &github.IssueListByRepoOptions{
+			State: "all",
+		}
+	}
+	return c.client.Issues.ListByRepo(ctx, org, repo, opts)
+}
+
+// ListComments fetches comments for a specific issue.
+func (c *Client) ListComments(ctx context.Context, org, repo string, number int, opts *github.IssueListCommentsOptions) ([]*github.IssueComment, *github.Response, error) {
+	return c.client.Issues.ListComments(ctx, org, repo, number, opts)
+}
