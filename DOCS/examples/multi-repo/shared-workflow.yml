@@ -1,0 +1,40 @@
+name: Simili-Bot Shared Workflow
+
+on:
+  workflow_call:
+    inputs:
+      config_path:
+        description: 'Path to the local configuration file'
+        required: false
+        default: '.github/simili.yaml'
+        type: string
+    secrets:
+      GEMINI_API_KEY:
+        required: true
+      QDRANT_URL:
+        required: true
+      QDRANT_API_KEY:
+        required: true
+      SIMILI_APP_ID:
+        required: false
+      SIMILI_PRIVATE_KEY:
+        required: false
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run Simili-Bot
+        uses: similigh/simili-bot@v1
+        with:
+          config_path: ${{ inputs.config_path }}
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          QDRANT_URL: ${{ secrets.QDRANT_URL }}
+          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
