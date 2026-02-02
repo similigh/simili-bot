@@ -1,3 +1,8 @@
+// Author: Kaviru Hapuarachchi
+// GitHub: https://github.com/Kavirubc
+// Created: 2026-02-02
+// Last Modified: 2026-02-02
+
 // Package state provides a GitHub API-based implementation of GitStateManager.
 package state
 

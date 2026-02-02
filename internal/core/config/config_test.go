@@ -1,3 +1,8 @@
+// Author: Kaviru Hapuarachchi
+// GitHub: https://github.com/Kavirubc
+// Created: 2026-02-02
+// Last Modified: 2026-02-02
+
 package config
 
 import (
