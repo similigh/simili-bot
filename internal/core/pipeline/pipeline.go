@@ -45,16 +45,17 @@ type Issue struct {
 
 // Result holds the accumulated results from pipeline execution.
 type Result struct {
-	IssueNumber    int
-	Skipped        bool
-	SkipReason     string
-	SimilarFound   []SimilarIssue
-	TransferTarget string
-	Transferred    bool
-	CommentPosted  bool
-	Indexed        bool
-	LabelsApplied  []string
-	Errors         []error
+	IssueNumber     int
+	Skipped         bool
+	SkipReason      string
+	SimilarFound    []SimilarIssue
+	TransferTarget  string
+	Transferred     bool
+	CommentPosted   bool
+	Indexed         bool
+	SuggestedLabels []string
+	LabelsApplied   []string
+	Errors          []error
 }
 
 // SimilarIssue represents an issue found to be similar.

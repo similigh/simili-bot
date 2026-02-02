@@ -7,12 +7,10 @@ package gemini
 
 import (
 	"testing"
-
-	"github.com/similigh/simili-bot/internal/core/pipeline"
 )
 
 func TestBuildTriagePrompt(t *testing.T) {
-	issue := &pipeline.Issue{
+	issue := &IssueInput{
 		Title:  "Bug: Application crashes on startup",
 		Body:   "When I start the application, it immediately crashes with error XYZ",
 		Author: "testuser",
@@ -35,7 +33,7 @@ func TestBuildTriagePrompt(t *testing.T) {
 }
 
 func TestBuildResponsePrompt(t *testing.T) {
-	similar := []pipeline.SimilarIssue{
+	similar := []SimilarIssueInput{
 		{
 			Number:     123,
 			Title:      "Similar issue",

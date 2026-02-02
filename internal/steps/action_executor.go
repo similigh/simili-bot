@@ -14,15 +14,13 @@ import (
 
 // ActionExecutor executes the decided actions (posting comments, transferring, etc).
 type ActionExecutor struct {
-	dryRun  bool
-	execute bool
+	dryRun bool
 }
 
 // NewActionExecutor creates a new action executor step.
-func NewActionExecutor(dryRun, execute bool) *ActionExecutor {
+func NewActionExecutor(deps *pipeline.Dependencies) *ActionExecutor {
 	return &ActionExecutor{
-		dryRun:  dryRun,
-		execute: execute,
+		dryRun: deps.DryRun,
 	}
 }
 
@@ -35,11 +33,6 @@ func (s *ActionExecutor) Name() string {
 func (s *ActionExecutor) Run(ctx *pipeline.Context) error {
 	// Get comment from metadata
 	comment, hasComment := ctx.Metadata["comment"].(string)
-
-	if !s.execute {
-		log.Printf("[action_executor] Execute disabled, skipping actions")
-		return nil
-	}
 
 	if s.dryRun {
 		if hasComment && comment != "" {

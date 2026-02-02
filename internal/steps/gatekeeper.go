@@ -18,7 +18,7 @@ import (
 type Gatekeeper struct{}
 
 // NewGatekeeper creates a new gatekeeper step.
-func NewGatekeeper() *Gatekeeper {
+func NewGatekeeper(deps *pipeline.Dependencies) *Gatekeeper {
 	return &Gatekeeper{}
 }
 

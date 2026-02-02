@@ -10,16 +10,21 @@ import (
 	"log"
 
 	"github.com/similigh/simili-bot/internal/core/pipeline"
+	"github.com/similigh/simili-bot/internal/integrations/qdrant"
 )
 
 // VectorDBPrep ensures the vector database collection exists and is ready.
 type VectorDBPrep struct {
+	client qdrant.VectorStore
 	dryRun bool
 }
 
 // NewVectorDBPrep creates a new vector DB preparation step.
-func NewVectorDBPrep(dryRun bool) *VectorDBPrep {
-	return &VectorDBPrep{dryRun: dryRun}
+func NewVectorDBPrep(deps *pipeline.Dependencies) *VectorDBPrep {
+	return &VectorDBPrep{
+		client: deps.VectorStore,
+		dryRun: deps.DryRun,
+	}
 }
 
 // Name returns the step name.
@@ -29,15 +34,26 @@ func (s *VectorDBPrep) Name() string {
 
 // Run ensures the collection exists.
 func (s *VectorDBPrep) Run(ctx *pipeline.Context) error {
+	collectionName := ctx.Config.Qdrant.Collection
+	dimension := ctx.Config.Embedding.Dimensions
+
 	if s.dryRun {
-		log.Printf("[vectordb_prep] DRY RUN: Would verify collection exists")
+		log.Printf("[vectordb_prep] DRY RUN: Would verify collection '%s' exists with dimension %d", collectionName, dimension)
 		return nil
 	}
 
-	// TODO: Implement actual collection verification/creation
-	// 1. Check if collection exists
-	// 2. Create if not exists with proper dimensions
-	log.Printf("[vectordb_prep] Collection verified")
+	if s.client == nil {
+		log.Printf("[vectordb_prep] WARNING: No vector store client configured, skipping")
+		return nil
+	}
+
+	err := s.client.CreateCollection(collectionName, dimension)
+	if err != nil {
+		log.Printf("[vectordb_prep] Failed to ensure collection exists: %v", err)
+		return err
+	}
+
+	log.Printf("[vectordb_prep] Collection '%s' verified", collectionName)
 
 	return nil
 }

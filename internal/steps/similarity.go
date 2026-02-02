@@ -7,19 +7,26 @@
 package steps
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/similigh/simili-bot/internal/core/pipeline"
+	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/qdrant"
 )
 
 // SimilaritySearch finds similar issues using the vector database.
 type SimilaritySearch struct {
-	// embedder and vectorDB would be injected dependencies
+	embedder *gemini.Embedder
+	store    qdrant.VectorStore
 }
 
 // NewSimilaritySearch creates a new similarity search step.
-func NewSimilaritySearch() *SimilaritySearch {
-	return &SimilaritySearch{}
+func NewSimilaritySearch(deps *pipeline.Dependencies) *SimilaritySearch {
+	return &SimilaritySearch{
+		embedder: deps.Embedder,
+		store:    deps.VectorStore,
+	}
 }
 
 // Name returns the step name.
@@ -29,17 +36,56 @@ func (s *SimilaritySearch) Name() string {
 
 // Run searches for similar issues.
 func (s *SimilaritySearch) Run(ctx *pipeline.Context) error {
-	// TODO: Implement actual similarity search
-	// 1. Generate embedding for the issue
-	// 2. Query Qdrant for similar vectors
-	// 3. Filter by similarity threshold
-	// 4. Populate ctx.SimilarIssues
+	collectionName := ctx.Config.Qdrant.Collection
+	threshold := ctx.Config.Defaults.SimilarityThreshold
+	limit := ctx.Config.Defaults.MaxSimilarToShow
 
-	log.Printf("[similarity_search] Searching for similar issues to #%d", ctx.Issue.Number)
+	// Skip if dependencies are missing (e.g. testing mode)
+	if s.embedder == nil || s.store == nil {
+		log.Printf("[similarity_search] WARNING: Dependencies missing, skipping search")
+		return nil
+	}
 
-	// Placeholder: no similar issues found
-	ctx.SimilarIssues = []pipeline.SimilarIssue{}
-	ctx.Result.SimilarFound = ctx.SimilarIssues
+	// Create content for embedding
+	content := fmt.Sprintf("%s\n\n%s", ctx.Issue.Title, ctx.Issue.Body)
+
+	// Generate embedding
+	embedding, err := s.embedder.Embed(ctx.Ctx, content)
+	if err != nil {
+		return fmt.Errorf("failed to generate embedding: %w", err)
+	}
+
+	// Search in Qdrant
+	results, err := s.store.Search(collectionName, embedding, limit, threshold)
+	if err != nil {
+		// Log error but don't fail pipeline? Or fail?
+		// Failing is probably safer so we know somethings wrong.
+		return fmt.Errorf("failed to search for similar issues: %w", err)
+	}
+
+	foundIssues := make([]pipeline.SimilarIssue, 0, len(results))
+	for _, res := range results {
+		// Filter out the current issue itself if it's already indexed
+		// Need to compare metadata
+		resNumberFloat, ok := res.Payload["number"].(float64)
+		if ok && int(resNumberFloat) == ctx.Issue.Number && res.Payload["repo"] == ctx.Issue.Repo {
+			continue
+		}
+
+		issue := pipeline.SimilarIssue{
+			Number:     int(resNumberFloat),
+			Title:      fmt.Sprintf("%v", res.Payload["title"]),
+			URL:        fmt.Sprintf("%v", res.Payload["url"]),
+			State:      fmt.Sprintf("%v", res.Payload["state"]),
+			Similarity: float64(res.Score),
+		}
+		foundIssues = append(foundIssues, issue)
+	}
+
+	ctx.SimilarIssues = foundIssues
+	ctx.Result.SimilarFound = foundIssues
+
+	log.Printf("[similarity_search] Found %d similar issues for #%d", len(foundIssues), ctx.Issue.Number)
 
 	return nil
 }

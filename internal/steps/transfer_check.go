@@ -16,7 +16,7 @@ import (
 type TransferCheck struct{}
 
 // NewTransferCheck creates a new transfer check step.
-func NewTransferCheck() *TransferCheck {
+func NewTransferCheck(deps *pipeline.Dependencies) *TransferCheck {
 	return &TransferCheck{}
 }
 

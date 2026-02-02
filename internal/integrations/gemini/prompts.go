@@ -8,12 +8,10 @@ package gemini
 import (
 	"fmt"
 	"strings"
-
-	"github.com/similigh/simili-bot/internal/core/pipeline"
 )
 
 // buildTriagePrompt creates a prompt for issue triage analysis.
-func buildTriagePrompt(issue *pipeline.Issue) string {
+func buildTriagePrompt(issue *IssueInput) string {
 	return fmt.Sprintf(`You are an AI assistant helping with GitHub issue triage. Analyze the following issue and provide:
 
 1. Quality assessment (good, needs-improvement, or poor)
@@ -43,7 +41,7 @@ Reasoning: [your analysis]`,
 }
 
 // buildResponsePrompt creates a prompt for generating a response about similar issues.
-func buildResponsePrompt(similar []pipeline.SimilarIssue) string {
+func buildResponsePrompt(similar []SimilarIssueInput) string {
 	var issueList strings.Builder
 	for i, s := range similar {
 		status := "open"

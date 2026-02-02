@@ -12,14 +12,19 @@ import (
 	"strings"
 
 	"github.com/similigh/simili-bot/internal/core/pipeline"
+	"github.com/similigh/simili-bot/internal/integrations/gemini"
 )
 
 // ResponseBuilder constructs the comment to post on the issue.
-type ResponseBuilder struct{}
+type ResponseBuilder struct {
+	llm *gemini.LLMClient
+}
 
 // NewResponseBuilder creates a new response builder step.
-func NewResponseBuilder() *ResponseBuilder {
-	return &ResponseBuilder{}
+func NewResponseBuilder(deps *pipeline.Dependencies) *ResponseBuilder {
+	return &ResponseBuilder{
+		llm: deps.LLMClient,
+	}
 }
 
 // Name returns the step name.
@@ -34,7 +39,48 @@ func (s *ResponseBuilder) Run(ctx *pipeline.Context) error {
 		return nil
 	}
 
-	// Build comment
+	// Try AI response if LLM is available and we have similar issues
+	if s.llm != nil && len(ctx.SimilarIssues) > 0 {
+		aiComment := s.generateAIResponse(ctx)
+		if aiComment != "" {
+			ctx.Metadata["comment"] = aiComment
+			log.Printf("[response_builder] Built AI comment")
+			return nil
+		}
+	}
+
+	// Fallback to template-based response
+	comment := s.buildTemplateResponse(ctx)
+	ctx.Metadata["comment"] = comment
+	log.Printf("[response_builder] Built template comment with %d similar issues", len(ctx.SimilarIssues))
+
+	return nil
+}
+
+func (s *ResponseBuilder) generateAIResponse(ctx *pipeline.Context) string {
+	// Convert similar issues to Gemini input format
+	similarInput := make([]gemini.SimilarIssueInput, len(ctx.SimilarIssues))
+	for i, sim := range ctx.SimilarIssues {
+		similarInput[i] = gemini.SimilarIssueInput{
+			Number:     sim.Number,
+			Title:      sim.Title,
+			URL:        sim.URL,
+			Similarity: sim.Similarity,
+			State:      sim.State,
+		}
+	}
+
+	response, err := s.llm.GenerateResponse(ctx.Ctx, similarInput)
+	if err != nil {
+		log.Printf("[response_builder] Failed to generate AI response: %v", err)
+		return ""
+	}
+
+	// Add Simili footer
+	return fmt.Sprintf("%s\n\n*(AI-generated response by Simili)*", response)
+}
+
+func (s *ResponseBuilder) buildTemplateResponse(ctx *pipeline.Context) string {
 	var parts []string
 
 	// Similar issues section
@@ -54,11 +100,5 @@ func (s *ResponseBuilder) Run(ctx *pipeline.Context) error {
 		parts = append(parts, fmt.Sprintf("This issue may belong in **%s**.\n", ctx.TransferTarget))
 	}
 
-	// Store the built comment in metadata for the action executor
-	comment := strings.Join(parts, "\n")
-	ctx.Metadata["comment"] = comment
-
-	log.Printf("[response_builder] Built comment with %d similar issues", len(ctx.SimilarIssues))
-
-	return nil
+	return strings.Join(parts, "\n")
 }

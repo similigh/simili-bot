@@ -9,6 +9,9 @@ package pipeline
 import (
 	"fmt"
 	"sync"
+
+	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/qdrant"
 )
 
 // Registry holds registered step factories.
@@ -24,8 +27,10 @@ type StepFactory func(deps *Dependencies) (Step, error)
 
 // Dependencies holds the dependencies that can be injected into steps.
 type Dependencies struct {
-	// Add common dependencies here as the project grows.
-	// For now, this is a placeholder for future extensibility.
+	Embedder    *gemini.Embedder
+	LLMClient   *gemini.LLMClient
+	VectorStore qdrant.VectorStore
+	DryRun      bool
 }
 
 // NewRegistry creates a new step registry.

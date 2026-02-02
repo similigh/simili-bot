@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/google/generative-ai-go/genai"
-	"github.com/similigh/simili-bot/internal/core/pipeline"
 	"google.golang.org/api/option"
 )
 
@@ -19,6 +18,23 @@ import (
 type LLMClient struct {
 	client *genai.Client
 	model  string
+}
+
+// IssueInput represents the issue data needed for analysis.
+type IssueInput struct {
+	Title  string
+	Body   string
+	Author string
+	Labels []string
+}
+
+// SimilarIssueInput represents a similar issue found.
+type SimilarIssueInput struct {
+	Number     int
+	Title      string
+	URL        string
+	Similarity float64
+	State      string
 }
 
 // TriageResult holds the result of issue triage analysis.
@@ -50,7 +66,7 @@ func (l *LLMClient) Close() error {
 }
 
 // AnalyzeIssue performs triage analysis on an issue.
-func (l *LLMClient) AnalyzeIssue(ctx context.Context, issue *pipeline.Issue) (*TriageResult, error) {
+func (l *LLMClient) AnalyzeIssue(ctx context.Context, issue *IssueInput) (*TriageResult, error) {
 	prompt := buildTriagePrompt(issue)
 
 	model := l.client.GenerativeModel(l.model)
@@ -79,7 +95,7 @@ func (l *LLMClient) AnalyzeIssue(ctx context.Context, issue *pipeline.Issue) (*T
 }
 
 // GenerateResponse creates a comment for similar issues.
-func (l *LLMClient) GenerateResponse(ctx context.Context, similar []pipeline.SimilarIssue) (string, error) {
+func (l *LLMClient) GenerateResponse(ctx context.Context, similar []SimilarIssueInput) (string, error) {
 	if len(similar) == 0 {
 		return "", nil
 	}

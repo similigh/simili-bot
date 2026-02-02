@@ -48,9 +48,10 @@ type QdrantConfig struct {
 
 // EmbeddingConfig holds embedding provider settings.
 type EmbeddingConfig struct {
-	Provider string `yaml:"provider"`
-	APIKey   string `yaml:"api_key"`
-	Model    string `yaml:"model,omitempty"`
+	Provider   string `yaml:"provider"`
+	APIKey     string `yaml:"api_key"`
+	Model      string `yaml:"model,omitempty"`
+	Dimensions int    `yaml:"dimensions,omitempty"`
 }
 
 // DefaultsConfig holds default behavior settings.
@@ -157,6 +158,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Embedding.Provider == "" {
 		c.Embedding.Provider = "gemini"
+	}
+	if c.Embedding.Dimensions == 0 {
+		c.Embedding.Dimensions = 768
 	}
 }
 
