@@ -1,0 +1,12 @@
+builds:
+  - main: ./cmd/simili/main.go
+    binary: simili
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
