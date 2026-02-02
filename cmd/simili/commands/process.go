@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -78,9 +79,47 @@ func runProcess() {
 			fmt.Printf("Error parsing issue JSON: %v\n", err)
 			os.Exit(1)
 		}
+	} else if repoName != "" && issueNum != 0 {
+		// Fetch from GitHub
+		token := os.Getenv("GITHUB_TOKEN")
+		if token == "" {
+			fmt.Println("Error: GITHUB_TOKEN environment variable is required to fetch issues from GitHub")
+			os.Exit(1)
+		}
+
+		ctx := context.Background()
+		ghClient := github.NewClient(ctx, token)
+
+		parts := strings.Split(repoName, "/")
+		if len(parts) != 2 {
+			fmt.Printf("Error: --repo must be in 'owner/repo' format (got '%s')\n", repoName)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Fetching issue %s#%d from GitHub...\n", repoName, issueNum)
+		ghIssue, err := ghClient.GetIssue(ctx, parts[0], parts[1], issueNum)
+		if err != nil {
+			fmt.Printf("Error fetching issue from GitHub: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Map to pipeline.Issue
+		issue = pipeline.Issue{
+			Org:    parts[0],
+			Repo:   parts[1],
+			Number: issueNum,
+			Title:  ghIssue.GetTitle(),
+			Body:   ghIssue.GetBody(),
+			State:  ghIssue.GetState(),
+			Author: ghIssue.GetUser().GetLogin(),
+			URL:    ghIssue.GetHTMLURL(),
+		}
+		for _, l := range ghIssue.Labels {
+			issue.Labels = append(issue.Labels, l.GetName())
+		}
 	} else {
-		// TODO: Fetch from GitHub if not provided (Phase 9/10)
-		fmt.Println("Please provide --issue <file>")
+		// No file and no valid flags
+		fmt.Println("Please provide --issue <file> OR --repo <owner/name> --number <num>")
 		os.Exit(1)
 	}
 
