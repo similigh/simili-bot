@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/github"
 	"github.com/similigh/simili-bot/internal/integrations/qdrant"
 )
 
@@ -30,6 +31,7 @@ type Dependencies struct {
 	Embedder    *gemini.Embedder
 	LLMClient   *gemini.LLMClient
 	VectorStore qdrant.VectorStore
+	GitHub      *github.Client
 	DryRun      bool
 }
 

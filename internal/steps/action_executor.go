@@ -10,16 +10,19 @@ import (
 	"log"
 
 	"github.com/similigh/simili-bot/internal/core/pipeline"
+	"github.com/similigh/simili-bot/internal/integrations/github"
 )
 
 // ActionExecutor executes the decided actions (posting comments, transferring, etc).
 type ActionExecutor struct {
+	client *github.Client
 	dryRun bool
 }
 
 // NewActionExecutor creates a new action executor step.
 func NewActionExecutor(deps *pipeline.Dependencies) *ActionExecutor {
 	return &ActionExecutor{
+		client: deps.GitHub,
 		dryRun: deps.DryRun,
 	}
 }
@@ -41,22 +44,44 @@ func (s *ActionExecutor) Run(ctx *pipeline.Context) error {
 		if ctx.TransferTarget != "" {
 			log.Printf("[action_executor] DRY RUN: Would transfer to %s", ctx.TransferTarget)
 		}
+		// TODO: Dry run log for labels if we add label logic
 		return nil
 	}
 
-	// TODO: Implement actual action execution
-	// 1. Post comment using GitHub API
-	// 2. Execute transfer if target is set
-	// 3. Apply labels if any
-
-	if hasComment && comment != "" {
-		log.Printf("[action_executor] Posted comment on issue #%d", ctx.Issue.Number)
-		ctx.Result.CommentPosted = true
+	if s.client == nil {
+		log.Printf("[action_executor] WARNING: No GitHub client configured, skipping actions")
+		return nil
 	}
 
+	// 1. Post comment
+	if hasComment && comment != "" {
+		err := s.client.CreateComment(ctx.Ctx, ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number, comment)
+		if err != nil {
+			log.Printf("[action_executor] Failed to post comment: %v", err)
+			ctx.Result.Errors = append(ctx.Result.Errors, err)
+		} else {
+			log.Printf("[action_executor] Posted comment on issue #%d", ctx.Issue.Number)
+			ctx.Result.CommentPosted = true
+		}
+	}
+
+	// 2. Transfer logic (not implemented in client fully yet)
 	if ctx.TransferTarget != "" {
-		log.Printf("[action_executor] Transfer to %s scheduled", ctx.TransferTarget)
+		// Just log for now as per previous TODO
+		log.Printf("[action_executor] Transfer to %s scheduled (API execution pending)", ctx.TransferTarget)
 		ctx.Result.TransferTarget = ctx.TransferTarget
+	}
+
+	// 3. Apply labels
+	if len(ctx.Result.SuggestedLabels) > 0 {
+		err := s.client.AddLabels(ctx.Ctx, ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number, ctx.Result.SuggestedLabels)
+		if err != nil {
+			log.Printf("[action_executor] Failed to add labels: %v", err)
+			ctx.Result.Errors = append(ctx.Result.Errors, err)
+		} else {
+			log.Printf("[action_executor] Added labels: %v", ctx.Result.SuggestedLabels)
+			ctx.Result.LabelsApplied = ctx.Result.SuggestedLabels
+		}
 	}
 
 	return nil
