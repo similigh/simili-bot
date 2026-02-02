@@ -7,7 +7,6 @@ package text
 
 import (
 	"strings"
-	"unicode/utf8"
 )
 
 // SplitterConfig holds configuration for text splitting.
@@ -101,9 +100,4 @@ func (s *RecursiveCharacterSplitter) split(text string, separators []string) []s
 	}
 
 	return result
-}
-
-// Length function to count size (using runes for safety)
-func (s *RecursiveCharacterSplitter) len(text string) int {
-	return utf8.RuneCountInString(text)
 }

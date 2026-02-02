@@ -32,8 +32,6 @@ var (
 	indexDryRun  bool
 )
 
-const checkpointFile = ".simili-index-checkpoint.json"
-
 type Checkpoint struct {
 	LastProcessedIssue int       `json:"last_processed_issue"`
 	Timestamp          time.Time `json:"timestamp"`
@@ -60,7 +58,9 @@ func init() {
 	indexCmd.Flags().StringVar(&indexToken, "token", "", "GitHub token (optional, defaults to GITHUB_TOKEN env var)")
 	indexCmd.Flags().BoolVar(&indexDryRun, "dry-run", false, "Simulate indexing without writing to DB")
 
-	indexCmd.MarkFlagRequired("repo")
+	if err := indexCmd.MarkFlagRequired("repo"); err != nil {
+		log.Fatalf("Failed to mark repo flag as required: %v", err)
+	}
 }
 
 func runIndex(cmd *cobra.Command, args []string) {
