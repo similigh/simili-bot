@@ -46,29 +46,58 @@ Progress is tracked in `.claude/sessions/2026-02-02-0941-v0.0.2v-foundation.md`
 
 ## Implementation Status
 
-- [x] Planning complete
-- [ ] Phase 1: File headers
-- [ ] Phase 2: Gemini integration
-- [ ] Phase 3: Qdrant integration
-- [ ] Phase 4: Pipeline wiring
-- [ ] Phase 5: GitHub API client
-- [ ] Phase 6: Action steps wiring
-- [ ] Phase 7: PendingActionScheduler
-- [ ] Phase 8: CLI implementation
-- [ ] Phase 9: Dependency injection
-- [ ] Phase 10: Integration testing
-- [ ] Phase 11: Documentation & release
-
----
-
-## Related Issues
-
-- [#2: Implement Embedder Integration](https://github.com/similigh/simili-bot/issues/2)
-- [#3: Implement VectorStore Integration](https://github.com/similigh/simili-bot/issues/3)
-- [#4: Implement GitHub API Client](https://github.com/similigh/simili-bot/issues/4)
-- [#5: Implement PendingActionScheduler step](https://github.com/similigh/simili-bot/issues/5)
-- [#6: CLI: Implement 'process' command](https://github.com/similigh/simili-bot/issues/6)
-
----
-
-**Last Updated:** 2026-02-02
+## Implementation Status
+ 
+ - [x] Planning complete
+ - [x] Phase 1: File headers
+ - [x] Phase 2: Gemini integration
+ - [x] Phase 3: Qdrant integration
+ - [x] Phase 4: Pipeline wiring
+ - [x] Phase 5: GitHub API client
+ - [x] Phase 6: Action steps wiring
+ - [x] Phase 7: PendingActionScheduler
+ - [x] Phase 8: CLI implementation (Cobra + Bubble Tea)
+ - [x] Phase 9: Dependency injection
+ - [x] Phase 10: Integration testing
+ - [x] Phase 11: Documentation & release
+ 
+ ---
+ 
+ ## CLI Usage
+ 
+ Simili-Bot v0.0.2v introduces a powerful CLI for processing issues locally.
+ 
+ ### Build
+ ```bash
+ go build -o simili ./cmd/simili
+ ```
+ 
+ ### Process an Issue
+ ```bash
+ # Process from file
+ ./simili process --issue issue.json
+ 
+ # Process with dry-run (no side effects)
+ ./simili process --issue issue.json --dry-run
+ ```
+ 
+ ### Configuration
+ By default, the CLI looks for `.simili.yaml` or `.github/simili.yaml`.
+ You can specify a config file:
+ ```bash
+ ./simili process --issue issue.json --config my-config.yaml
+ ```
+ 
+ ---
+ 
+ ## Related Issues
+ 
+ - [#2: Implement Embedder Integration](https://github.com/similigh/simili-bot/issues/2)
+ - [#3: Implement VectorStore Integration](https://github.com/similigh/simili-bot/issues/3)
+ - [#4: Implement GitHub API Client](https://github.com/similigh/simili-bot/issues/4)
+ - [#5: Implement PendingActionScheduler step](https://github.com/similigh/simili-bot/issues/5)
+ - [#6: CLI: Implement 'process' command](https://github.com/similigh/simili-bot/issues/6)
+ 
+ ---
+ 
+ **Last Updated:** 2026-02-02
