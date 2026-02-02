@@ -53,32 +53,40 @@ To handle Org-wide rules:
 
 ## 3. Implementation Roadmap
 
-### Phase 1: Foundation (The Bedrock)
-*   [ ] **Config Engine**: Implement YAML loading with `extends` support for multi-repo inheritance.
-*   [ ] **Git State Manager**: Implement the driver to read/write JSON files to the `simili-state` branch without checking it out locally (using low-level git commands or go-git).
+### Phase 1: Foundation (The Bedrock) ✅
+*   [x] **Config Engine**: Implement YAML loading with `extends` support for multi-repo inheritance.
+*   [x] **Git State Manager**: Implement the driver to read/write JSON files to the `simili-state` branch without checking it out locally (using low-level git commands or go-git).
 
-### Phase 2: The Core Pipeline (The Engine)
-*   [ ] **Pipeline Runner**: The loop that executes steps.
-*   [ ] **Context Definition**: efficient data structure to pass data between steps.
+### Phase 2: The Core Pipeline (The Engine) ✅
+*   [x] **Pipeline Runner**: The loop that executes steps.
+*   [x] **Context Definition**: Efficient data structure to pass data between steps.
+*   [x] **Step Registry**: Dynamic step factory registration with preset workflows.
 
-### Phase 3: The Lego Blocks (The Features)
-*   [ ] **Step: `Embedder`**: Generates embeddings (Gemini/OpenAI).
-*   [ ] **Step: `VectorStore`**: Interactions with Qdrant.
-*   [ ] **Step: `DuplicateDetector`**: Search vector store + Logic.
-*   [ ] **Step: `LLMTriage`**: Classify and extract metadata.
-*   [ ] **Step: `Router`**: Decide if issue belongs elsewhere.
+### Phase 3: The Lego Blocks (The Features) ✅
+*   [x] **Step Scaffolds**: Gatekeeper, VectorDBPrep, Similarity, TransferCheck, Triage, ResponseBuilder, ActionExecutor, Indexer.
 
-### Phase 4: State-Aware Blocks
+---
+
+## 4. Remaining Work (Future Phases)
+
+> **Note**: These phases are planned for future implementation.
+
+### Phase 4: Integrations
+*   [ ] **Embedder Integration**: Wire up Gemini/OpenAI for embeddings.
+*   [ ] **VectorStore Integration**: Connect to Qdrant.
+*   [ ] **GitHub API Integration**: Comments, transfers, labels.
+
+### Phase 5: State-Aware Blocks
 *   [ ] **Step: `PendingActionScheduler`**: Writes to State Branch.
 *   [ ] **Step: `PendingActionExecutor`**: Reads from State Branch and executes (Sync).
 
-### Phase 5: Interface & Entry points
+### Phase 6: Interface & Entry points
 *   [ ] **CLI**: `simili process`, `simili sync`.
 *   [ ] **GitHub Action**: Wrapper around the CLI.
 
 ---
 
-## 4. Directory Structure
+## 5. Directory Structure
 ```text
 /cmd
   /simili       # Main CLI entrypoint
@@ -90,3 +98,4 @@ To handle Org-wide rules:
   /steps        # The Lego Blocks (All logic goes here)
   /integrations # Clients (GitHub, Qdrant, Gemini)
 ```
+
