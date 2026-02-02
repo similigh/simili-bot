@@ -7,11 +7,9 @@
 package main
 
 import (
-	"fmt"
-	"os"
+	"github.com/similigh/simili-bot/cmd/simili/commands"
 )
 
 func main() {
-	fmt.Println("simili-bot v0.0.1")
-	os.Exit(0)
+	commands.Execute()
 }
