@@ -42,4 +42,8 @@ func RegisterAll(r *pipeline.Registry) {
 	r.Register("indexer", func(deps *pipeline.Dependencies) (pipeline.Step, error) {
 		return NewIndexer(deps), nil
 	})
+
+	r.Register("pending_action_scheduler", func(deps *pipeline.Dependencies) (pipeline.Step, error) {
+		return NewPendingActionScheduler(deps), nil
+	})
 }
