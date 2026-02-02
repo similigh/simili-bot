@@ -57,12 +57,15 @@ defaults:
 repositories:
   - org: "my-org"
     repo: "backend"
+    enabled: true
     labels: ["backend", "api"]
   - org: "my-org"
     repo: "frontend"
+    enabled: true
     labels: ["frontend", "ui"]
   - org: "my-org"
     repo: "docs"
+    enabled: true
     labels: ["documentation"]
 ```
 

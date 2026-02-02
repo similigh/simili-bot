@@ -197,9 +197,8 @@ func mergeConfigs(parent, child *Config) *Config {
 	if child.Defaults.MaxSimilarToShow != 0 {
 		result.Defaults.MaxSimilarToShow = child.Defaults.MaxSimilarToShow
 	}
-	if child.Defaults.CrossRepoSearch {
-		result.Defaults.CrossRepoSearch = true
-	}
+	// CrossRepoSearch: always take the child value so it can override parent true -> false and vice versa
+	result.Defaults.CrossRepoSearch = child.Defaults.CrossRepoSearch
 
 	// Repositories: child completely overrides if non-empty
 	if len(child.Repositories) > 0 {

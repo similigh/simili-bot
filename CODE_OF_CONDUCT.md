@@ -46,7 +46,7 @@ an individual is officially representing the community in public spaces.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement at
-**[INSERT CONTACT METHOD]**.
+**conduct@similigh.com** or by opening a confidential issue in this repository.
 
 All complaints will be reviewed and investigated promptly and fairly.
 

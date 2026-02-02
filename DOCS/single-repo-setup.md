@@ -44,6 +44,12 @@ workflow: "issue-triage"
 defaults:
   similarity_threshold: 0.65
   max_similar_to_show: 5
+
+# Optional: specify repository explicitly (can be omitted for single-repo mode)
+repositories:
+  - org: "your-org"
+    repo: "your-repo"
+    enabled: true
 ```
 
 ---

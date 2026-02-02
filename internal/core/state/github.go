@@ -146,7 +146,8 @@ func (m *GitHubStateManager) getFileContent(ctx context.Context, path string) ([
 		return nil, fmt.Errorf("unexpected encoding: %s", result.Encoding)
 	}
 
-	return base64.StdEncoding.DecodeString(result.Content)
+	content := strings.ReplaceAll(result.Content, "\n", "")
+	return base64.StdEncoding.DecodeString(content)
 }
 
 // putFileContent creates or updates a file in the state branch.
@@ -174,7 +175,10 @@ func (m *GitHubStateManager) putFileContent(ctx context.Context, path string, co
 		payload["sha"] = sha
 	}
 
-	body, _ := json.Marshal(payload)
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
 	req, err := http.NewRequestWithContext(ctx, "PUT", url, strings.NewReader(string(body)))
 	if err != nil {
 		return err
@@ -211,7 +215,10 @@ func (m *GitHubStateManager) deleteFile(ctx context.Context, path, message strin
 		"branch":  m.branch,
 	}
 
-	body, _ := json.Marshal(payload)
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
 	req, err := http.NewRequestWithContext(ctx, "DELETE", url, strings.NewReader(string(body)))
 	if err != nil {
 		return err
@@ -317,6 +324,7 @@ func (m *GitHubStateManager) setHeaders(req *http.Request) {
 	req.Header.Set("Authorization", "Bearer "+m.token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("Content-Type", "application/json")
 }
 
 // notFoundError indicates a file was not found.

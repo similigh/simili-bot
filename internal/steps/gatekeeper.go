@@ -24,6 +24,12 @@ func (s *Gatekeeper) Name() string {
 
 // Run checks repository configuration and permissions.
 func (s *Gatekeeper) Run(ctx *pipeline.Context) error {
+	// If repositories list is empty, allow all (single-repo mode)
+	if len(ctx.Config.Repositories) == 0 {
+		log.Printf("[gatekeeper] No repositories configured, allowing all (single-repo mode)")
+		return nil
+	}
+
 	// Check if the repository is configured
 	repoConfig := findRepoConfig(ctx)
 	if repoConfig == nil {

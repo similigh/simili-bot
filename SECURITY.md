@@ -13,7 +13,7 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 ### How to Report
 
 1. **Do NOT** open a public GitHub issue for security vulnerabilities
-2. Email your findings to **[INSERT SECURITY EMAIL]**
+2. Email your findings to **security@similigh.com**
 3. Include as much detail as possible:
    - Description of the vulnerability
    - Steps to reproduce
