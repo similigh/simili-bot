@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions & Discussions
+    url: https://github.com/similigh/simili-bot/discussions
+    about: Ask questions, share ideas, or discuss Simili
+  - name: 📚 Documentation
+    url: https://github.com/similigh/simili-bot/tree/main/DOCS
+    about: Check our documentation before opening an issue

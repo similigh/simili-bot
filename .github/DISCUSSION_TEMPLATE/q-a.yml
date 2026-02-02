@@ -1,0 +1,21 @@
+title: "❓ Q&A"
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ask a question about Simili!
+        
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What would you like to know?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Any additional context that might help answer your question?
