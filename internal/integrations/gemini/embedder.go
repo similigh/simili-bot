@@ -21,16 +21,20 @@ type Embedder struct {
 }
 
 // NewEmbedder creates a new Gemini embedder.
-func NewEmbedder(apiKey string) (*Embedder, error) {
+func NewEmbedder(apiKey, model string) (*Embedder, error) {
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
 	}
 
+	if model == "" {
+		model = "text-embedding-004" // Default to modern 768-dim model
+	}
+
 	return &Embedder{
 		client: client,
-		model:  "gemini-embedding-001", // 768 dimensions
+		model:  model,
 	}, nil
 }
 

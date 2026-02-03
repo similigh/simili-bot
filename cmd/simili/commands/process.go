@@ -213,9 +213,13 @@ func runProcess() {
 	}
 
 	if geminiKey != "" {
-		embedder, err := gemini.NewEmbedder(geminiKey)
+		// Use configured model or default (passed as empty string)
+		embedder, err := gemini.NewEmbedder(geminiKey, cfg.Embedding.Model)
 		if err == nil {
 			deps.Embedder = embedder
+			if verbose {
+				fmt.Printf("Initialized Gemini Embedder with model: %s\n", cfg.Embedding.Model)
+			}
 		} else {
 			fmt.Printf("Warning: Failed to initialize Gemini embedder: %v\n", err)
 		}
