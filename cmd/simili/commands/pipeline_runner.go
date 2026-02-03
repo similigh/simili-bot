@@ -1,28 +1,20 @@
-// Author: Kaviru Hapuarachchi
-// GitHub: https://github.com/kavirubc
-// Created: 2026-02-02
-// Last Modified: 2026-02-02
-
 package commands
 
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"time"
-
-	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/similigh/simili-bot/internal/core/config"
 	"github.com/similigh/simili-bot/internal/core/pipeline"
 	"github.com/similigh/simili-bot/internal/steps"
-	"github.com/similigh/simili-bot/internal/tui"
 )
 
-// Wrapper step to send status updates
+// Wrapper step to print status updates to stdout
 type statusReportingStep struct {
-	inner      pipeline.Step
-	statusChan chan<- tui.PipelineStatusMsg
+	inner pipeline.Step
 }
 
 func (s *statusReportingStep) Name() string {
@@ -30,10 +22,10 @@ func (s *statusReportingStep) Name() string {
 }
 
 func (s *statusReportingStep) Run(ctx *pipeline.Context) error {
-	s.statusChan <- tui.PipelineStatusMsg{Step: s.Name(), Status: "started", Message: "Starting..."}
+	fmt.Printf("🔄 [%s] Starting...\n", s.Name())
 
 	// Artificial delay for visual effect, can be disabled via env var
-	if os.Getenv("SIMILI_NO_UI_DELAY") == "" {
+	if os.Getenv("SIMILI_NO_DELAY") == "" {
 		time.Sleep(100 * time.Millisecond)
 	}
 
@@ -41,20 +33,18 @@ func (s *statusReportingStep) Run(ctx *pipeline.Context) error {
 
 	if err != nil {
 		if err == pipeline.ErrSkipPipeline {
-			s.statusChan <- tui.PipelineStatusMsg{Step: s.Name(), Status: "skipped", Message: ctx.Result.SkipReason}
+			fmt.Printf("⏭️ [%s] Skipped: %s\n", s.Name(), ctx.Result.SkipReason)
 			return err
 		}
-		s.statusChan <- tui.PipelineStatusMsg{Step: s.Name(), Status: "error", Message: err.Error()}
+		fmt.Printf("❌ [%s] Error: %s\n", s.Name(), err.Error())
 		return err
 	}
 
-	s.statusChan <- tui.PipelineStatusMsg{Step: s.Name(), Status: "success", Message: "Completed"}
+	fmt.Printf("✅ [%s] Completed\n", s.Name())
 	return nil
 }
 
-func runPipeline(p *tea.Program, deps *pipeline.Dependencies, stepNames []string, issue *pipeline.Issue, cfg *config.Config, statusChan chan tui.PipelineStatusMsg) {
-	defer close(statusChan)
-
+func runPipeline(deps *pipeline.Dependencies, stepNames []string, issue *pipeline.Issue, cfg *config.Config) {
 	ctx := context.Background()
 	pCtx := pipeline.NewContext(ctx, issue, cfg)
 
@@ -64,30 +54,29 @@ func runPipeline(p *tea.Program, deps *pipeline.Dependencies, stepNames []string
 	// Build the actual steps
 	builtSteps, err := registry.BuildFromNames(stepNames, deps)
 	if err != nil {
-		statusChan <- tui.PipelineStatusMsg{Step: "init", Status: "error", Message: err.Error()}
-		p.Send(tui.ResultMsg{Success: false, Output: err.Error()})
+		fmt.Printf("❌ [init] Error building steps: %s\n", err.Error())
 		return
 	}
 
 	// Wrap steps with status reporting
 	var wrappedSteps []pipeline.Step
 	for _, step := range builtSteps.Steps() {
-		wrappedSteps = append(wrappedSteps, &statusReportingStep{inner: step, statusChan: statusChan})
+		wrappedSteps = append(wrappedSteps, &statusReportingStep{inner: step})
 	}
 
 	finalPipeline := pipeline.New(wrappedSteps...)
 
 	if err := finalPipeline.Run(pCtx); err != nil {
-		// Error handling is done inside the wrapper mostly, but catching the final return
-		p.Send(tui.ResultMsg{Success: false, Output: err.Error()})
+		fmt.Printf("❌ Pipeline failed: %s\n", err.Error())
 		return
 	}
 
-	// Marshal result to JSON
+	// Marshal result to JSON and print it
 	resultBytes, err := json.MarshalIndent(pCtx.Result, "", "  ")
 	if err != nil {
-		p.Send(tui.ResultMsg{Success: false, Output: err.Error()})
+		fmt.Printf("❌ Error marshaling result: %s\n", err.Error())
 		return
 	}
-	p.Send(tui.ResultMsg{Success: true, Output: string(resultBytes)})
+	fmt.Println("\n=== Pipeline Result ===")
+	fmt.Println(string(resultBytes))
 }

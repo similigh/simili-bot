@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
 	"github.com/similigh/simili-bot/internal/core/config"
@@ -19,7 +18,6 @@ import (
 	"github.com/similigh/simili-bot/internal/integrations/gemini"
 	"github.com/similigh/simili-bot/internal/integrations/github"
 	"github.com/similigh/simili-bot/internal/integrations/qdrant"
-	"github.com/similigh/simili-bot/internal/tui"
 )
 
 var (
@@ -139,23 +137,16 @@ func runProcess() {
 		issue.Number = issueNum
 	}
 
-	statusChan := make(chan tui.PipelineStatusMsg)
-
 	// Determine steps
 	stepNames := pipeline.ResolveSteps(cfg.Steps, workflow)
 
 	// Initialize Dependencies
-	// TODO: This should ideally be dependent on flags/config, potentially mocking interfaces if dry-run
-	// But for now we try real clients if env vars exist
-
-	// This is a simplified dependency setup for the CLI context
 	deps := &pipeline.Dependencies{
 		DryRun: dryRun,
 	}
 
 	// Initialize clients with error logging
 	// Embedder
-	// Check config then env
 	geminiKey := cfg.Embedding.APIKey
 	if geminiKey == "" {
 		geminiKey = os.Getenv("GEMINI_API_KEY")
@@ -187,6 +178,11 @@ func runProcess() {
 		qKey = val
 	}
 
+	// Log Qdrant connection info (masked key)
+	if verbose {
+		fmt.Printf("Connecting to Qdrant at %s\n", qURL)
+	}
+
 	qdrantClient, err := qdrant.NewClient(qURL, qKey)
 	if err == nil {
 		deps.VectorStore = qdrantClient
@@ -213,45 +209,8 @@ func runProcess() {
 
 	defer deps.Close()
 
-	// Check if running in CI/non-interactive environment
-	isCI := os.Getenv("CI") == "true" || os.Getenv("GITHUB_ACTIONS") == "true"
-
-	if isCI {
-		// Run pipeline directly without TUI in CI environments
-		fmt.Println("[Simili-Bot] Running in CI mode (no TUI)")
-
-		// Start a goroutine to consume status updates and print them
-		go func() {
-			for msg := range statusChan {
-				switch msg.Status {
-				case "error":
-					fmt.Printf("❌ [%s] %s\n", msg.Step, msg.Message)
-				case "success":
-					fmt.Printf("✅ [%s] %s\n", msg.Step, msg.Message)
-				case "started":
-					fmt.Printf("🔄 [%s] %s\n", msg.Step, msg.Message)
-				case "skipped":
-					fmt.Printf("⏭️ [%s] %s\n", msg.Step, msg.Message)
-				}
-			}
-		}()
-
-		runPipeline(nil, deps, stepNames, &issue, cfg, statusChan)
-		fmt.Println("[Simili-Bot] Pipeline completed")
-	} else {
-		// Create TUI model for interactive mode
-		model := tui.NewModel(stepNames, statusChan)
-		p := tea.NewProgram(model)
-
-		// Run pipeline in a goroutine
-		go func() {
-			// Start processing
-			runPipeline(p, deps, stepNames, &issue, cfg, statusChan)
-		}()
-
-		if _, err := p.Run(); err != nil {
-			fmt.Printf("Error running TUI: %v\n", err)
-			os.Exit(1)
-		}
-	}
+	// Run pipeline
+	fmt.Println("[Simili-Bot] Starting pipeline...")
+	runPipeline(deps, stepNames, &issue, cfg)
+	fmt.Println("[Simili-Bot] Pipeline completed")
 }
