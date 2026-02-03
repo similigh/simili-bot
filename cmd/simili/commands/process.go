@@ -175,16 +175,16 @@ func runProcess() {
 	// Vector Store
 	// Check for Qdrant env vars or config
 	qURL := cfg.Qdrant.URL
-	if qURL == "" {
-		qURL = os.Getenv("QDRANT_URL")
+	if val := os.Getenv("QDRANT_URL"); val != "" && (qURL == "" || qURL == "localhost:6334") {
+		qURL = val
 	}
 	if qURL == "" {
 		qURL = "localhost:6334" // Default
 	}
 
 	qKey := cfg.Qdrant.APIKey
-	if qKey == "" {
-		qKey = os.Getenv("QDRANT_API_KEY")
+	if val := os.Getenv("QDRANT_API_KEY"); val != "" && qKey == "" {
+		qKey = val
 	}
 
 	qdrantClient, err := qdrant.NewClient(qURL, qKey)
