@@ -13,14 +13,19 @@ import (
 
 	"github.com/similigh/simili-bot/internal/core/config"
 	"github.com/similigh/simili-bot/internal/core/pipeline"
+	"github.com/similigh/simili-bot/internal/integrations/github"
 )
 
 // Gatekeeper checks if the issue's repository is enabled and applies cooldown logic.
-type Gatekeeper struct{}
+type Gatekeeper struct{
+	github *github.Client
+}
 
 // NewGatekeeper creates a new gatekeeper step.
 func NewGatekeeper(deps *pipeline.Dependencies) *Gatekeeper {
-	return &Gatekeeper{}
+	return &Gatekeeper{
+		github: deps.GitHub,
+	}
 }
 
 // Name returns the step name.
@@ -42,16 +47,14 @@ func (s *Gatekeeper) Run(ctx *pipeline.Context) error {
 		return pipeline.ErrSkipPipeline
 	}
 
-	// WORKAROUND: GitHub sends action="opened" to destination repo, not "transferred"
-	// Skip "opened" events for issues created within the last 2 minutes
-	// This prevents re-triaging freshly transferred issues
-	if ctx.Issue.EventAction == "opened" && !ctx.Issue.CreatedAt.IsZero() {
-		age := time.Since(ctx.Issue.CreatedAt)
-		if age < 2*time.Minute {
-			log.Printf("[gatekeeper] Issue #%d was just created (%v ago), likely transferred, skipping triage",
-				ctx.Issue.Number, age.Round(time.Second))
+	// GitHub sends action="opened" to destination repo for transferred issues, not "transferred"
+	// Check the GitHub API for actual transfer events to avoid false positives
+	if ctx.Issue.EventAction == "opened" {
+		if s.checkIfRecentlyTransferred(ctx) {
+			log.Printf("[gatekeeper] Issue #%d was recently transferred (verified via API), skipping triage",
+				ctx.Issue.Number)
 			ctx.Result.Skipped = true
-			ctx.Result.SkipReason = "recently created issue (likely transferred)"
+			ctx.Result.SkipReason = "recently transferred issue (verified via GitHub API)"
 			return pipeline.ErrSkipPipeline
 		}
 	}
@@ -90,4 +93,35 @@ func findRepoConfig(ctx *pipeline.Context) *config.RepositoryConfig {
 		}
 	}
 	return nil
+}
+
+// checkIfRecentlyTransferred checks if an issue was recently transferred by examining
+// the GitHub issue timeline/events for "transferred" events within the last 2 minutes.
+// Returns true if the issue was recently transferred, false otherwise.
+func (s *Gatekeeper) checkIfRecentlyTransferred(ctx *pipeline.Context) bool {
+	if s.github == nil {
+		log.Printf("[gatekeeper] GitHub client not available, cannot check transfer events")
+		return false
+	}
+
+	// Fetch issue timeline events
+	events, err := s.github.ListIssueEvents(ctx.Ctx, ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number)
+	if err != nil {
+		log.Printf("[gatekeeper] Warning: Failed to fetch issue events for #%d: %v", ctx.Issue.Number, err)
+		return false
+	}
+
+	// Look for recent "transferred" events (within last 2 minutes)
+	cutoff := time.Now().Add(-2 * time.Minute)
+	for _, event := range events {
+		if event.Event != nil && *event.Event == "transferred" {
+			if event.CreatedAt != nil && event.CreatedAt.Time.After(cutoff) {
+				log.Printf("[gatekeeper] Found recent transfer event for issue #%d at %v",
+					ctx.Issue.Number, event.CreatedAt.Time)
+				return true
+			}
+		}
+	}
+
+	return false
 }

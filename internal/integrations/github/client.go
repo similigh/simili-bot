@@ -151,3 +151,29 @@ func (c *Client) GetFileContent(ctx context.Context, org, repo, path, ref string
 
 	return []byte(content), nil
 }
+
+// ListIssueEvents fetches timeline events for a specific issue.
+// This includes events like transferred, closed, reopened, labeled, etc.
+func (c *Client) ListIssueEvents(ctx context.Context, org, repo string, number int) ([]*github.IssueEvent, error) {
+	// List all pages of events
+	var allEvents []*github.IssueEvent
+	opts := &github.ListOptions{
+		PerPage: 100,
+	}
+
+	for {
+		events, resp, err := c.client.Issues.ListIssueEvents(ctx, org, repo, number, opts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list issue events for #%d in %s/%s: %w", number, org, repo, err)
+		}
+
+		allEvents = append(allEvents, events...)
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	return allEvents, nil
+}
