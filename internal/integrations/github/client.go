@@ -15,7 +15,8 @@ import (
 
 // Client wraps the GitHub API client.
 type Client struct {
-	client *github.Client
+	client  *github.Client
+	graphql *GraphQLClient
 }
 
 // GetIssue fetches issue details.
@@ -57,25 +58,49 @@ func (c *Client) AddLabels(ctx context.Context, org, repo string, number int, la
 	return nil
 }
 
-// TransferIssue transfers an issue to another repository.
-// Note: Transferring issues via API requires the user to have admin access.
+// TransferIssue transfers an issue to another repository using GitHub GraphQL API.
+// Requires the user to have admin/write access to both repositories.
 // targetRepo should be in "owner/repo" format.
-//
-// TODO: GitHub's REST API for issue transfers is complex and may require GraphQL.
-// This is not yet implemented. See https://docs.github.com/en/graphql/reference/mutations#transferissue
-func (c *Client) TransferIssue(ctx context.Context, org, repo string, number int, targetRepo string) error {
+// Returns the URL of the transferred issue.
+func (c *Client) TransferIssue(ctx context.Context, org, repo string, number int, targetRepo string) (string, error) {
+	// Trim whitespace from input
+	targetRepo = strings.TrimSpace(targetRepo)
+
 	// Validate input format
 	parts := strings.Split(targetRepo, "/")
 	if len(parts) != 2 {
-		return fmt.Errorf("invalid targetRepo format: expected 'owner/repo', got '%s'", targetRepo)
+		return "", fmt.Errorf("invalid targetRepo format: expected 'owner/repo', got '%s'", targetRepo)
 	}
 
-	if parts[0] == "" || parts[1] == "" {
-		return fmt.Errorf("invalid targetRepo: owner and repo cannot be empty")
+	targetOwner, targetRepoName := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	if targetOwner == "" || targetRepoName == "" {
+		return "", fmt.Errorf("invalid targetRepo: owner and repo cannot be empty")
 	}
 
-	// Transfer API is not implemented yet
-	return fmt.Errorf("issue transfer not yet implemented - requires GraphQL API integration")
+	// Check if GraphQL client is available
+	if c.graphql == nil {
+		return "", fmt.Errorf("issue transfer requires authenticated GraphQL client")
+	}
+
+	// Get issue node ID
+	issueNodeID, err := c.graphql.GetIssueNodeID(ctx, org, repo, number)
+	if err != nil {
+		return "", fmt.Errorf("failed to get issue node ID: %w", err)
+	}
+
+	// Get target repository node ID
+	targetRepoNodeID, err := c.graphql.GetRepositoryNodeID(ctx, targetOwner, targetRepoName)
+	if err != nil {
+		return "", fmt.Errorf("failed to get target repository node ID: %w", err)
+	}
+
+	// Execute transfer
+	newURL, err := c.graphql.TransferIssue(ctx, issueNodeID, targetRepoNodeID)
+	if err != nil {
+		return "", fmt.Errorf("failed to transfer issue: %w", err)
+	}
+
+	return newURL, nil
 }
 
 // ListIssues fetches a list of issues from the repository.

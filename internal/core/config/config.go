@@ -37,6 +37,9 @@ type Config struct {
 
 	// Repositories lists the repositories this config applies to.
 	Repositories []RepositoryConfig `yaml:"repositories,omitempty"`
+
+	// Transfer configures cross-repository issue routing.
+	Transfer TransferConfig `yaml:"transfer,omitempty"`
 }
 
 // QdrantConfig holds Qdrant connection settings.
@@ -67,6 +70,25 @@ type RepositoryConfig struct {
 	Repo    string   `yaml:"repo"`
 	Labels  []string `yaml:"labels,omitempty"`
 	Enabled bool     `yaml:"enabled"`
+}
+
+// TransferRule defines a rule for transferring issues to another repository.
+type TransferRule struct {
+	Name          string   `yaml:"name"`
+	Priority      int      `yaml:"priority,omitempty"`
+	Target        string   `yaml:"target"`                 // "owner/repo"
+	Labels        []string `yaml:"labels,omitempty"`       // ALL must match
+	LabelsAny     []string `yaml:"labels_any,omitempty"`   // ANY must match
+	TitleContains []string `yaml:"title_contains,omitempty"`
+	BodyContains  []string `yaml:"body_contains,omitempty"`
+	Author        []string `yaml:"author,omitempty"`
+	Enabled       *bool    `yaml:"enabled,omitempty"`
+}
+
+// TransferConfig holds transfer routing settings.
+type TransferConfig struct {
+	Enabled bool           `yaml:"enabled"`
+	Rules   []TransferRule `yaml:"rules,omitempty"`
 }
 
 // Load reads a config file from the given path and expands environment variables.
@@ -212,6 +234,13 @@ func mergeConfigs(parent, child *Config) *Config {
 	// Repositories: child completely overrides if non-empty
 	if len(child.Repositories) > 0 {
 		result.Repositories = child.Repositories
+	}
+
+	// Transfer.Enabled: always take the child value so it can override parent true -> false and vice versa
+	result.Transfer.Enabled = child.Transfer.Enabled
+	// Transfer.Rules: child overrides rules if non-empty; otherwise inherit from parent
+	if len(child.Transfer.Rules) > 0 {
+		result.Transfer.Rules = child.Transfer.Rules
 	}
 
 	return &result

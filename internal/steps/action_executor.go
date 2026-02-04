@@ -67,13 +67,14 @@ func (s *ActionExecutor) Run(ctx *pipeline.Context) error {
 
 	// 2. Transfer issue to another repository
 	if ctx.TransferTarget != "" {
-		err := s.client.TransferIssue(ctx.Ctx, ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number, ctx.TransferTarget)
+		newURL, err := s.client.TransferIssue(ctx.Ctx, ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number, ctx.TransferTarget)
 		if err != nil {
 			log.Printf("[action_executor] Failed to transfer issue to %s: %v", ctx.TransferTarget, err)
 			ctx.Result.Errors = append(ctx.Result.Errors, err)
 		} else {
-			log.Printf("[action_executor] Transferred issue #%d to %s", ctx.Issue.Number, ctx.TransferTarget)
+			log.Printf("[action_executor] Transferred issue #%d to %s (new URL: %s)", ctx.Issue.Number, ctx.TransferTarget, newURL)
 			ctx.Result.TransferTarget = ctx.TransferTarget
+			ctx.Result.Transferred = true
 		}
 	}
 

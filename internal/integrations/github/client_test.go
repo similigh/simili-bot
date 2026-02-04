@@ -41,7 +41,7 @@ func TestAddLabelsValidation(t *testing.T) {
 }
 
 func TestTransferIssueValidation(t *testing.T) {
-	client := &Client{client: nil} // nil client for validation testing
+	client := &Client{client: nil, graphql: nil} // nil client for validation testing
 
 	tests := []struct {
 		name       string
@@ -58,14 +58,13 @@ func TestTransferIssueValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := client.TransferIssue(context.Background(), "org", "repo", 1, tt.targetRepo)
+			_, err := client.TransferIssue(context.Background(), "org", "repo", 1, tt.targetRepo)
 			if tt.shouldFail && err == nil {
 				t.Errorf("Expected error for targetRepo=%q", tt.targetRepo)
 			}
-			// Note: All cases should fail with "not yet implemented" but we're testing
-			// that validation errors come first for invalid formats
-			if !tt.shouldFail && err != nil && err.Error() != "issue transfer not yet implemented - requires GraphQL API integration" {
-				t.Errorf("Expected 'not yet implemented' error, got: %v", err)
+			// Valid format but no graphql client should fail with "requires authenticated GraphQL client"
+			if !tt.shouldFail && err != nil && err.Error() != "issue transfer requires authenticated GraphQL client" {
+				t.Errorf("Expected 'requires authenticated GraphQL client' error, got: %v", err)
 			}
 		})
 	}
