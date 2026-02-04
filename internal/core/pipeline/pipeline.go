@@ -32,15 +32,18 @@ type Step interface {
 
 // Issue represents a GitHub issue being processed.
 type Issue struct {
-	Org    string
-	Repo   string
-	Number int
-	Title  string
-	Body   string
-	State  string // "open" or "closed"
-	Labels []string
-	Author string
-	URL    string
+	Org           string
+	Repo          string
+	Number        int
+	Title         string
+	Body          string
+	State         string // "open" or "closed"
+	Labels        []string
+	Author        string
+	URL           string
+	EventType     string // "issues" or "issue_comment"
+	CommentBody   string
+	CommentAuthor string
 }
 
 // Result holds the accumulated results from pipeline execution.

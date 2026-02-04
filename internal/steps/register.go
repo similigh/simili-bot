@@ -15,6 +15,10 @@ func RegisterAll(r *pipeline.Registry) {
 		return NewGatekeeper(deps), nil
 	})
 
+	r.Register("command_handler", func(deps *pipeline.Dependencies) (pipeline.Step, error) {
+		return NewCommandHandler(deps), nil
+	})
+
 	r.Register("vectordb_prep", func(deps *pipeline.Dependencies) (pipeline.Step, error) {
 		return NewVectorDBPrep(deps), nil
 	})

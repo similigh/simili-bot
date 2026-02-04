@@ -95,14 +95,12 @@ func (s *LLMRouter) Run(ctx *pipeline.Context) error {
 		ctx.Result.TransferConfidence = confidence
 		ctx.Result.TransferReason = result.BestMatch.Reasoning
 
-		if confidence >= ctx.Config.Transfer.HighConfidence {
-			// High confidence: auto-transfer
+		if confidence >= ctx.Config.Transfer.MediumConfidence {
+			// Proactive transfer: auto-transfer if confidence is medium or higher
 			ctx.TransferTarget = targetRepo
 			ctx.Result.TransferTarget = targetRepo
-			log.Printf("[llm_router] High confidence (%.2f) transfer to %s", confidence, targetRepo)
-		} else if confidence >= ctx.Config.Transfer.MediumConfidence {
-			// Medium confidence: suggest in comment
-			log.Printf("[llm_router] Medium confidence (%.2f) suggestion for %s", confidence, targetRepo)
+			ctx.Metadata["original_repo"] = fmt.Sprintf("%s/%s", ctx.Issue.Org, ctx.Issue.Repo)
+			log.Printf("[llm_router] Proactive transfer (%.2f) to %s", confidence, targetRepo)
 		} else {
 			// Low confidence: silent
 			log.Printf("[llm_router] Low confidence (%.2f), no action", confidence)

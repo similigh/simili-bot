@@ -112,6 +112,7 @@ var Presets = map[string][]string{
 	// issue-triage: Standard issue processing workflow
 	"issue-triage": {
 		"gatekeeper",
+		"command_handler",
 		"vectordb_prep",
 		"llm_router",
 		"transfer_check",

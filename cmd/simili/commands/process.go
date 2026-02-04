@@ -124,14 +124,27 @@ func runProcess() {
 		}
 
 		// Check if keys were populated. If not, this might be a raw GitHub event.
-		// GitHub events are complex and nested. pipeline.Issue is likely flat.
-		// We need to extract what we can.
-		if issue.Number == 0 {
-			// Try parsing as generic map to check structure
+		if issue.Number == 0 || issue.EventType == "" {
 			var raw map[string]interface{}
 			if err := json.Unmarshal(data, &raw); err == nil {
-				// Check for 'issue' key (issue events)
+				// Handle issue comments
+				if comm, ok := raw["comment"].(map[string]interface{}); ok {
+					issue.EventType = "issue_comment"
+					if body, ok := comm["body"].(string); ok {
+						issue.CommentBody = body
+					}
+					if user, ok := comm["user"].(map[string]interface{}); ok {
+						if login, ok := user["login"].(string); ok {
+							issue.CommentAuthor = login
+						}
+					}
+				}
+
+				// Handle issues
 				if iss, ok := raw["issue"].(map[string]interface{}); ok {
+					if issue.EventType == "" {
+						issue.EventType = "issues"
+					}
 					if num, ok := iss["number"].(float64); ok {
 						issue.Number = int(num)
 					}
@@ -141,13 +154,16 @@ func runProcess() {
 					if body, ok := iss["body"].(string); ok {
 						issue.Body = body
 					}
-				}
-				// Also check 'pull_request' if needed, or 'comment'
-				if issue.Number == 0 {
-					// Maybe it's at root (if stripped)?
-					if num, ok := raw["number"].(float64); ok {
-						issue.Number = int(num)
+					if user, ok := iss["user"].(map[string]interface{}); ok {
+						if login, ok := user["login"].(string); ok {
+							issue.Author = login
+						}
 					}
+				}
+
+				// Fallback event name from GitHub environment if possible
+				if issue.EventType == "" {
+					issue.EventType = os.Getenv("GITHUB_EVENT_NAME")
 				}
 			}
 		}

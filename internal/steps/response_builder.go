@@ -157,15 +157,18 @@ func (s *ResponseBuilder) buildTransferSection(ctx *pipeline.Context) string {
 	targetRepo := fmt.Sprintf("%s/%s", match.Org, match.Repo)
 	confidencePct := int(confidence * 100)
 
-	if confidence >= ctx.Config.Transfer.HighConfidence {
-		parts = append(parts, fmt.Sprintf("🔄 **Transferring to %s** (%d%% confidence)", targetRepo, confidencePct))
+	if confidence >= ctx.Config.Transfer.MediumConfidence {
+		sourceRepo, _ := ctx.Metadata["original_repo"].(string)
+		if sourceRepo != "" {
+			parts = append(parts, fmt.Sprintf("🔄 **Transferred from %s** (%d%% confidence)", sourceRepo, confidencePct))
+		} else {
+			parts = append(parts, fmt.Sprintf("🔄 **Transferring to %s** (%d%% confidence)", targetRepo, confidencePct))
+		}
+		parts = append(parts, fmt.Sprintf("**Reason:** %s", match.Reasoning))
+		parts = append(parts, "\n*If this transfer was incorrect, comment `/undo` to move it back.*")
 	} else {
 		parts = append(parts, fmt.Sprintf("This issue might be better suited for **%s** (%d%% confidence)", targetRepo, confidencePct))
-	}
-
-	parts = append(parts, fmt.Sprintf("**Reason:** %s", match.Reasoning))
-
-	if confidence < ctx.Config.Transfer.HighConfidence {
+		parts = append(parts, fmt.Sprintf("**Reason:** %s", match.Reasoning))
 		parts = append(parts, "\n*React with 👍 to confirm transfer.*")
 	}
 
