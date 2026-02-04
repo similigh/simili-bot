@@ -63,13 +63,16 @@ func (c *Client) AddLabels(ctx context.Context, org, repo string, number int, la
 // targetRepo should be in "owner/repo" format.
 // Returns the URL of the transferred issue.
 func (c *Client) TransferIssue(ctx context.Context, org, repo string, number int, targetRepo string) (string, error) {
+	// Trim whitespace from input
+	targetRepo = strings.TrimSpace(targetRepo)
+
 	// Validate input format
 	parts := strings.Split(targetRepo, "/")
 	if len(parts) != 2 {
 		return "", fmt.Errorf("invalid targetRepo format: expected 'owner/repo', got '%s'", targetRepo)
 	}
 
-	targetOwner, targetRepoName := parts[0], parts[1]
+	targetOwner, targetRepoName := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
 	if targetOwner == "" || targetRepoName == "" {
 		return "", fmt.Errorf("invalid targetRepo: owner and repo cannot be empty")
 	}

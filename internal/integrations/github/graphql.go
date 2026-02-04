@@ -79,7 +79,12 @@ func (c *GraphQLClient) execute(ctx context.Context, query string, variables map
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GraphQL request failed with status %d: %s", resp.StatusCode, string(respBody))
+		// Truncate response body to avoid leaking sensitive data in logs
+		truncated := string(respBody)
+		if len(truncated) > 200 {
+			truncated = truncated[:200] + "..."
+		}
+		return nil, fmt.Errorf("GraphQL request failed with status %d: %s", resp.StatusCode, truncated)
 	}
 
 	var gqlResp graphQLResponse
@@ -205,6 +210,10 @@ func (c *GraphQLClient) TransferIssue(ctx context.Context, issueNodeID, targetRe
 
 	if err := json.Unmarshal(data, &result); err != nil {
 		return "", fmt.Errorf("failed to parse transfer result: %w", err)
+	}
+
+	if result.TransferIssue.Issue.URL == "" {
+		return "", fmt.Errorf("issue transfer failed: empty URL returned")
 	}
 
 	return result.TransferIssue.Issue.URL, nil

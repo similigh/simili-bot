@@ -236,9 +236,11 @@ func mergeConfigs(parent, child *Config) *Config {
 		result.Repositories = child.Repositories
 	}
 
-	// Transfer: child overrides if enabled or has rules
-	if child.Transfer.Enabled || len(child.Transfer.Rules) > 0 {
-		result.Transfer = child.Transfer
+	// Transfer.Enabled: always take the child value so it can override parent true -> false and vice versa
+	result.Transfer.Enabled = child.Transfer.Enabled
+	// Transfer.Rules: child overrides rules if non-empty; otherwise inherit from parent
+	if len(child.Transfer.Rules) > 0 {
+		result.Transfer.Rules = child.Transfer.Rules
 	}
 
 	return &result
