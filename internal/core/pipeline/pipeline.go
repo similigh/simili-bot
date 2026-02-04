@@ -42,6 +42,7 @@ type Issue struct {
 	Author        string
 	URL           string
 	EventType     string // "issues" or "issue_comment"
+	EventAction   string // "opened", "edited", "transferred", "closed", etc.
 	CommentBody   string
 	CommentAuthor string
 }

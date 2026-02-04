@@ -197,8 +197,8 @@ func (c *Config) applyDefaults() {
 		c.Defaults.MaxSimilarToShow = 5
 	}
 	if c.Defaults.CrossRepoSearch == nil {
-		f := false
-		c.Defaults.CrossRepoSearch = &f
+		t := true
+		c.Defaults.CrossRepoSearch = &t
 	}
 	if c.Embedding.Provider == "" {
 		c.Embedding.Provider = "gemini"

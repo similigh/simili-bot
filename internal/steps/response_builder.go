@@ -188,14 +188,16 @@ func (s *ResponseBuilder) buildSimilarSection(ctx *pipeline.Context) string {
 
 	var parts []string
 	parts = append(parts, "### Similar Issues")
+	parts = append(parts, "| Issue | Title | Similarity | State |")
+	parts = append(parts, "|-------|-------|------------|-------|")
 
 	for _, similar := range ctx.SimilarIssues {
-		status := ""
+		status := similar.State
 		if similar.State == "closed" {
-			status = " ✅"
+			status = "closed ✅"
 		}
-		parts = append(parts, fmt.Sprintf("- [#%d](%s) - %s (%.0f%% similar, %s)%s",
-			similar.Number, similar.URL, similar.Title, similar.Similarity*100, similar.State, status))
+		parts = append(parts, fmt.Sprintf("| [#%d](%s) | %s | %.0f%% | %s |",
+			similar.Number, similar.URL, similar.Title, similar.Similarity*100, status))
 	}
 
 	parts = append(parts, "")

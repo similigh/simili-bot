@@ -29,6 +29,14 @@ func (s *Gatekeeper) Name() string {
 
 // Run checks repository configuration and permissions.
 func (s *Gatekeeper) Run(ctx *pipeline.Context) error {
+	// Skip triage for transferred issues (they were already triaged in source repo)
+	if ctx.Issue.EventAction == "transferred" {
+		log.Printf("[gatekeeper] Issue was transferred from another repo, skipping triage")
+		ctx.Result.Skipped = true
+		ctx.Result.SkipReason = "transferred from another repository"
+		return pipeline.ErrSkipPipeline
+	}
+
 	// If repositories list is empty, allow all (single-repo mode)
 	if len(ctx.Config.Repositories) == 0 {
 		log.Printf("[gatekeeper] No repositories configured, allowing all (single-repo mode)")
