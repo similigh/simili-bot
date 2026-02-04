@@ -29,6 +29,10 @@ func (s *Gatekeeper) Name() string {
 
 // Run checks repository configuration and permissions.
 func (s *Gatekeeper) Run(ctx *pipeline.Context) error {
+	// Debug logging to understand what events we receive
+	log.Printf("[gatekeeper] DEBUG: Issue #%d, EventType=%q, EventAction=%q, Repo=%s/%s",
+		ctx.Issue.Number, ctx.Issue.EventType, ctx.Issue.EventAction, ctx.Issue.Org, ctx.Issue.Repo)
+
 	// Skip triage for transferred issues (they were already triaged in source repo)
 	if ctx.Issue.EventAction == "transferred" {
 		log.Printf("[gatekeeper] Issue was transferred from another repo, skipping triage")
