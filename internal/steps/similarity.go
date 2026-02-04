@@ -36,6 +36,12 @@ func (s *SimilaritySearch) Name() string {
 
 // Run searches for similar issues.
 func (s *SimilaritySearch) Run(ctx *pipeline.Context) error {
+	// Skip if transfer is detected (duplicate detection not needed)
+	if skip, ok := ctx.Metadata["skip_duplicate_detection"].(bool); ok && skip {
+		log.Printf("[similarity_search] Skipping (transfer detected)")
+		return nil
+	}
+
 	collectionName := ctx.Config.Qdrant.Collection
 	threshold := ctx.Config.Defaults.SimilarityThreshold
 	limit := ctx.Config.Defaults.MaxSimilarToShow
