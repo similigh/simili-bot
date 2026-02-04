@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
-// GitHub: https://github.com/Kavirubc
+// GitHub: https://github.com/kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-02
+// Last Modified: 2026-02-04
 
 // Package pipeline provides the core pipeline engine for Simili-Bot.
 // It defines the Step interface and Context structure used by all pipeline steps.
@@ -56,6 +56,19 @@ type Result struct {
 	SuggestedLabels []string
 	LabelsApplied   []string
 	Errors          []error
+
+	// Quality assessment
+	QualityScore  float64  `json:"quality_score"`
+	QualityIssues []string `json:"quality_issues"`
+
+	// Transfer routing
+	TransferConfidence float64 `json:"transfer_confidence"`
+	TransferReason     string  `json:"transfer_reason"`
+
+	// Duplicate detection
+	IsDuplicate         bool    `json:"is_duplicate"`
+	DuplicateOf         int     `json:"duplicate_of"`
+	DuplicateConfidence float64 `json:"duplicate_confidence"`
 }
 
 // SimilarIssue represents an issue found to be similar.

@@ -31,6 +31,18 @@ func RegisterAll(r *pipeline.Registry) {
 		return NewTriage(deps), nil
 	})
 
+	r.Register("llm_router", func(deps *pipeline.Dependencies) (pipeline.Step, error) {
+		return NewLLMRouter(deps), nil
+	})
+
+	r.Register("quality_checker", func(deps *pipeline.Dependencies) (pipeline.Step, error) {
+		return NewQualityChecker(deps), nil
+	})
+
+	r.Register("duplicate_detector", func(deps *pipeline.Dependencies) (pipeline.Step, error) {
+		return NewDuplicateDetector(deps), nil
+	})
+
 	r.Register("response_builder", func(deps *pipeline.Dependencies) (pipeline.Step, error) {
 		return NewResponseBuilder(deps), nil
 	})

@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
-// GitHub: https://github.com/Kavirubc
+// GitHub: https://github.com/kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-02
+// Last Modified: 2026-02-04
 
 // Package config handles loading and merging Simili configuration.
 package config
@@ -66,19 +66,20 @@ type DefaultsConfig struct {
 
 // RepositoryConfig defines a repository and its settings.
 type RepositoryConfig struct {
-	Org     string   `yaml:"org"`
-	Repo    string   `yaml:"repo"`
-	Labels  []string `yaml:"labels,omitempty"`
-	Enabled bool     `yaml:"enabled"`
+	Org         string   `yaml:"org"`
+	Repo        string   `yaml:"repo"`
+	Description string   `yaml:"description,omitempty"` // For LLM routing
+	Labels      []string `yaml:"labels,omitempty"`
+	Enabled     bool     `yaml:"enabled"`
 }
 
 // TransferRule defines a rule for transferring issues to another repository.
 type TransferRule struct {
 	Name          string   `yaml:"name"`
 	Priority      int      `yaml:"priority,omitempty"`
-	Target        string   `yaml:"target"`                 // "owner/repo"
-	Labels        []string `yaml:"labels,omitempty"`       // ALL must match
-	LabelsAny     []string `yaml:"labels_any,omitempty"`   // ANY must match
+	Target        string   `yaml:"target"`               // "owner/repo"
+	Labels        []string `yaml:"labels,omitempty"`     // ALL must match
+	LabelsAny     []string `yaml:"labels_any,omitempty"` // ANY must match
 	TitleContains []string `yaml:"title_contains,omitempty"`
 	BodyContains  []string `yaml:"body_contains,omitempty"`
 	Author        []string `yaml:"author,omitempty"`
@@ -87,8 +88,12 @@ type TransferRule struct {
 
 // TransferConfig holds transfer routing settings.
 type TransferConfig struct {
-	Enabled bool           `yaml:"enabled"`
-	Rules   []TransferRule `yaml:"rules,omitempty"`
+	Enabled                      bool           `yaml:"enabled"`
+	Rules                        []TransferRule `yaml:"rules,omitempty"`
+	LLMRoutingEnabled            bool           `yaml:"llm_routing_enabled,omitempty"`
+	HighConfidence               float64        `yaml:"high_confidence,omitempty"`                // Default: 0.9
+	MediumConfidence             float64        `yaml:"medium_confidence,omitempty"`              // Default: 0.6
+	DuplicateConfidenceThreshold float64        `yaml:"duplicate_confidence_threshold,omitempty"` // Default: 0.8
 }
 
 // Load reads a config file from the given path and expands environment variables.
@@ -184,6 +189,16 @@ func (c *Config) applyDefaults() {
 	if c.Embedding.Dimensions == 0 {
 		c.Embedding.Dimensions = 768
 	}
+	// Transfer LLM routing defaults
+	if c.Transfer.HighConfidence == 0 {
+		c.Transfer.HighConfidence = 0.9
+	}
+	if c.Transfer.MediumConfidence == 0 {
+		c.Transfer.MediumConfidence = 0.6
+	}
+	if c.Transfer.DuplicateConfidenceThreshold == 0 {
+		c.Transfer.DuplicateConfidenceThreshold = 0.8
+	}
 }
 
 // mergeConfigs merges a child config onto a parent config.
@@ -238,9 +253,19 @@ func mergeConfigs(parent, child *Config) *Config {
 
 	// Transfer.Enabled: always take the child value so it can override parent true -> false and vice versa
 	result.Transfer.Enabled = child.Transfer.Enabled
+	result.Transfer.LLMRoutingEnabled = child.Transfer.LLMRoutingEnabled
 	// Transfer.Rules: child overrides rules if non-empty; otherwise inherit from parent
 	if len(child.Transfer.Rules) > 0 {
 		result.Transfer.Rules = child.Transfer.Rules
+	}
+	if child.Transfer.HighConfidence != 0 {
+		result.Transfer.HighConfidence = child.Transfer.HighConfidence
+	}
+	if child.Transfer.MediumConfidence != 0 {
+		result.Transfer.MediumConfidence = child.Transfer.MediumConfidence
+	}
+	if child.Transfer.DuplicateConfidenceThreshold != 0 {
+		result.Transfer.DuplicateConfidenceThreshold = child.Transfer.DuplicateConfidenceThreshold
 	}
 
 	return &result

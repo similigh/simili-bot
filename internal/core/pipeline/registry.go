@@ -113,8 +113,11 @@ var Presets = map[string][]string{
 	"issue-triage": {
 		"gatekeeper",
 		"vectordb_prep",
+		"llm_router",
 		"transfer_check",
 		"similarity_search",
+		"duplicate_detector",
+		"quality_checker",
 		"triage",
 		"response_builder",
 		"action_executor",
