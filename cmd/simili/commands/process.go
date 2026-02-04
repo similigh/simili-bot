@@ -161,9 +161,26 @@ func runProcess() {
 					}
 				}
 
+				// Handle repository
+				if repo, ok := raw["repository"].(map[string]interface{}); ok {
+					if owner, ok := repo["owner"].(map[string]interface{}); ok {
+						if login, ok := owner["login"].(string); ok {
+							issue.Org = login
+						}
+					}
+					if name, ok := repo["name"].(string); ok {
+						issue.Repo = name
+					}
+				}
+
 				// Fallback event name from GitHub environment if possible
 				if issue.EventType == "" {
 					issue.EventType = os.Getenv("GITHUB_EVENT_NAME")
+				}
+
+				// Handle event action if provided
+				if action, ok := raw["action"].(string); ok {
+					issue.EventAction = action
 				}
 			}
 		}
