@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
-// GitHub: https://github.com/Kavirubc
+// GitHub: https://github.com/kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-02
+// Last Modified: 2026-02-04
 
 // Package steps provides the triage step.
 package steps
@@ -13,7 +13,7 @@ import (
 	"github.com/similigh/simili-bot/internal/integrations/gemini"
 )
 
-// Triage uses LLM to analyze and classify the issue.
+// Triage uses LLM to suggest labels for the issue.
 type Triage struct {
 	llm *gemini.LLMClient
 }
@@ -30,14 +30,15 @@ func (s *Triage) Name() string {
 	return "triage"
 }
 
-// Run analyzes the issue using LLM.
+// Run analyzes the issue for label suggestions.
+// Quality assessment is now handled by the quality_checker step.
 func (s *Triage) Run(ctx *pipeline.Context) error {
 	if s.llm == nil {
 		log.Printf("[triage] WARNING: No LLM client configured, skipping triage")
 		return nil
 	}
 
-	log.Printf("[triage] Analyzing issue #%d", ctx.Issue.Number)
+	log.Printf("[triage] Analyzing issue #%d for labels", ctx.Issue.Number)
 
 	// Convert pipeline.Issue to gemini.IssueInput
 	input := &gemini.IssueInput{
@@ -49,14 +50,12 @@ func (s *Triage) Run(ctx *pipeline.Context) error {
 
 	result, err := s.llm.AnalyzeIssue(ctx.Ctx, input)
 	if err != nil {
-		log.Printf("[triage] Failed to analyze issue: %v", err)
-		// We don't fail the pipeline, just skip triage results
-		return nil
+		log.Printf("[triage] Failed to analyze issue: %v (non-blocking)", err)
+		return nil // Graceful degradation
 	}
 
 	ctx.Result.SuggestedLabels = result.SuggestedLabels
-	// TODO: Handle quality and reasoning (maybe store in metadata or comments)
-	log.Printf("[triage] Analysis complete. Suggested Labels: %v", result.SuggestedLabels)
+	log.Printf("[triage] Suggested labels: %v", result.SuggestedLabels)
 
 	return nil
 }
