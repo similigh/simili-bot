@@ -103,29 +103,30 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	// Expand environment variables in the YAML content
-	expanded := os.ExpandEnv(string(data))
-
-	var cfg Config
-	if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse config: %w", err)
+	cfg, err := parseRaw(data)
+	if err != nil {
+		return nil, err
 	}
 
-	// Apply defaults
 	cfg.applyDefaults()
-
-	return &cfg, nil
+	return cfg, nil
 }
 
 // LoadWithInheritance loads a config and resolves the 'extends' chain.
 // The fetcher function is used to retrieve remote configs.
 func LoadWithInheritance(path string, fetcher func(ref string) ([]byte, error)) (*Config, error) {
-	cfg, err := Load(path)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	cfg, err := parseRaw(data)
 	if err != nil {
 		return nil, err
 	}
 
 	if cfg.Extends == "" {
+		cfg.applyDefaults()
 		return cfg, nil
 	}
 
@@ -135,17 +136,29 @@ func LoadWithInheritance(path string, fetcher func(ref string) ([]byte, error)) 
 		return nil, fmt.Errorf("failed to fetch parent config '%s': %w", cfg.Extends, err)
 	}
 
-	expanded := os.ExpandEnv(string(parentData))
-	var parentCfg Config
-	if err := yaml.Unmarshal([]byte(expanded), &parentCfg); err != nil {
+	parentCfg, err := parseRaw(parentData)
+	if err != nil {
 		return nil, fmt.Errorf("failed to parse parent config: %w", err)
 	}
 
 	// Merge: child overrides parent
-	merged := mergeConfigs(&parentCfg, cfg)
+	merged := mergeConfigs(parentCfg, cfg)
 	merged.applyDefaults()
 
 	return merged, nil
+}
+
+// parseRaw parses YAML content and expands environment variables without applying defaults.
+func parseRaw(data []byte) (*Config, error) {
+	// Expand environment variables in the YAML content
+	expanded := os.ExpandEnv(string(data))
+
+	var cfg Config
+	if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse config: %w", err)
+	}
+
+	return &cfg, nil
 }
 
 // FindConfigPath searches for a config file in standard locations.
