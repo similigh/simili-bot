@@ -37,7 +37,7 @@ func NewRuleMatcher(rules []config.TransferRule) *RuleMatcher {
 }
 
 // Match evaluates all rules against the issue and returns the first match.
-// Returns nil if no rules match.
+// Returns a MatchResult with Matched=false if no rules match.
 func (m *RuleMatcher) Match(issue *IssueInput) *MatchResult {
 	for i := range m.rules {
 		rule := &m.rules[i]
