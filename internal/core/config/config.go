@@ -77,9 +77,9 @@ type RepositoryConfig struct {
 type TransferRule struct {
 	Name          string   `yaml:"name"`
 	Priority      int      `yaml:"priority,omitempty"`
-	Target        string   `yaml:"target"`                 // "owner/repo"
-	Labels        []string `yaml:"labels,omitempty"`       // ALL must match
-	LabelsAny     []string `yaml:"labels_any,omitempty"`   // ANY must match
+	Target        string   `yaml:"target"`               // "owner/repo"
+	Labels        []string `yaml:"labels,omitempty"`     // ALL must match
+	LabelsAny     []string `yaml:"labels_any,omitempty"` // ANY must match
 	TitleContains []string `yaml:"title_contains,omitempty"`
 	BodyContains  []string `yaml:"body_contains,omitempty"`
 	Author        []string `yaml:"author,omitempty"`
@@ -88,11 +88,12 @@ type TransferRule struct {
 
 // TransferConfig holds transfer routing settings.
 type TransferConfig struct {
-	Enabled           bool           `yaml:"enabled"`
-	Rules             []TransferRule `yaml:"rules,omitempty"`
-	LLMRoutingEnabled bool           `yaml:"llm_routing_enabled,omitempty"`
-	HighConfidence    float64        `yaml:"high_confidence,omitempty"`   // Default: 0.9
-	MediumConfidence  float64        `yaml:"medium_confidence,omitempty"` // Default: 0.6
+	Enabled                      bool           `yaml:"enabled"`
+	Rules                        []TransferRule `yaml:"rules,omitempty"`
+	LLMRoutingEnabled            bool           `yaml:"llm_routing_enabled,omitempty"`
+	HighConfidence               float64        `yaml:"high_confidence,omitempty"`                // Default: 0.9
+	MediumConfidence             float64        `yaml:"medium_confidence,omitempty"`              // Default: 0.6
+	DuplicateConfidenceThreshold float64        `yaml:"duplicate_confidence_threshold,omitempty"` // Default: 0.8
 }
 
 // Load reads a config file from the given path and expands environment variables.
@@ -195,6 +196,9 @@ func (c *Config) applyDefaults() {
 	if c.Transfer.MediumConfidence == 0 {
 		c.Transfer.MediumConfidence = 0.6
 	}
+	if c.Transfer.DuplicateConfidenceThreshold == 0 {
+		c.Transfer.DuplicateConfidenceThreshold = 0.8
+	}
 }
 
 // mergeConfigs merges a child config onto a parent config.
@@ -259,6 +263,9 @@ func mergeConfigs(parent, child *Config) *Config {
 	}
 	if child.Transfer.MediumConfidence != 0 {
 		result.Transfer.MediumConfidence = child.Transfer.MediumConfidence
+	}
+	if child.Transfer.DuplicateConfidenceThreshold != 0 {
+		result.Transfer.DuplicateConfidenceThreshold = child.Transfer.DuplicateConfidenceThreshold
 	}
 
 	return &result

@@ -86,8 +86,14 @@ func (s *DuplicateDetector) Run(ctx *pipeline.Context) error {
 	// Store in context
 	ctx.Metadata["duplicate_result"] = result
 
-	// Mark as duplicate if high confidence (>= 0.8)
-	if result.IsDuplicate && result.Confidence >= 0.8 {
+	// Get threshold from config (default 0.8)
+	threshold := ctx.Config.Transfer.DuplicateConfidenceThreshold
+	if threshold == 0 {
+		threshold = 0.8
+	}
+
+	// Mark as duplicate if high confidence
+	if result.IsDuplicate && result.Confidence >= threshold {
 		ctx.Result.IsDuplicate = true
 		ctx.Result.DuplicateOf = result.DuplicateOf
 		ctx.Result.DuplicateConfidence = result.Confidence

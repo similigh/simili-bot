@@ -93,7 +93,7 @@ func (s *ResponseBuilder) buildQualitySection(ctx *pipeline.Context) string {
 
 	// Score and assessment
 	scoreDisplay := fmt.Sprintf("%.1f/10", qualityResult.Score*10)
-	assessment := strings.Title(qualityResult.Assessment)
+	assessment := capitalizeFirst(qualityResult.Assessment)
 	parts = append(parts, fmt.Sprintf("**Score:** %s (%s)", scoreDisplay, assessment))
 
 	// Issues found
@@ -124,7 +124,7 @@ func (s *ResponseBuilder) buildLabelsSection(ctx *pipeline.Context) string {
 	}
 
 	var parts []string
-	parts = append(parts, "### Labels Applied")
+	parts = append(parts, "### Suggested Labels")
 
 	labels := make([]string, len(ctx.Result.SuggestedLabels))
 	for i, label := range ctx.Result.SuggestedLabels {
@@ -215,4 +215,12 @@ func (s *ResponseBuilder) buildDuplicateSection(ctx *pipeline.Context) string {
 
 	parts = append(parts, "")
 	return strings.Join(parts, "\n")
+}
+
+// capitalizeFirst capitalizes the first letter of a string.
+func capitalizeFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
