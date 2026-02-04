@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
-// GitHub: https://github.com/Kavirubc
+// GitHub: https://github.com/kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-02
+// Last Modified: 2026-02-04
 
 // Package steps provides the response builder step.
 package steps
@@ -32,73 +32,187 @@ func (s *ResponseBuilder) Name() string {
 	return "response_builder"
 }
 
-// Run builds the response comment.
+// Run builds the comprehensive triage summary comment.
 func (s *ResponseBuilder) Run(ctx *pipeline.Context) error {
-	if len(ctx.SimilarIssues) == 0 && ctx.TransferTarget == "" {
-		log.Printf("[response_builder] No similar issues or transfer target, skipping comment")
-		return nil
-	}
+	log.Printf("[response_builder] Building comprehensive triage summary for issue #%d", ctx.Issue.Number)
 
-	// Try AI response if LLM is available and we have similar issues
-	if s.llm != nil && len(ctx.SimilarIssues) > 0 {
-		aiComment := s.generateAIResponse(ctx)
-		if aiComment != "" {
-			ctx.Metadata["comment"] = aiComment
-			log.Printf("[response_builder] Built AI comment")
-			return nil
-		}
-	}
-
-	// Fallback to template-based response
-	comment := s.buildTemplateResponse(ctx)
+	comment := s.buildTriageSummary(ctx)
 	ctx.Metadata["comment"] = comment
-	log.Printf("[response_builder] Built template comment with %d similar issues", len(ctx.SimilarIssues))
 
+	log.Printf("[response_builder] Built triage summary")
 	return nil
 }
 
-func (s *ResponseBuilder) generateAIResponse(ctx *pipeline.Context) string {
-	// Convert similar issues to Gemini input format
-	similarInput := make([]gemini.SimilarIssueInput, len(ctx.SimilarIssues))
-	for i, sim := range ctx.SimilarIssues {
-		similarInput[i] = gemini.SimilarIssueInput{
-			Number:     sim.Number,
-			Title:      sim.Title,
-			URL:        sim.URL,
-			Similarity: sim.Similarity,
-			State:      sim.State,
-		}
+// buildTriageSummary creates a comprehensive triage report.
+func (s *ResponseBuilder) buildTriageSummary(ctx *pipeline.Context) string {
+	var sections []string
+
+	// Header
+	sections = append(sections, "## 🤖 Simili Triage Report\n")
+
+	// Quality Assessment Section
+	if qualitySection := s.buildQualitySection(ctx); qualitySection != "" {
+		sections = append(sections, qualitySection)
 	}
 
-	response, err := s.llm.GenerateResponse(ctx.Ctx, similarInput)
-	if err != nil {
-		log.Printf("[response_builder] Failed to generate AI response: %v", err)
+	// Labels Section
+	if labelsSection := s.buildLabelsSection(ctx); labelsSection != "" {
+		sections = append(sections, labelsSection)
+	}
+
+	// Transfer Section
+	if transferSection := s.buildTransferSection(ctx); transferSection != "" {
+		sections = append(sections, transferSection)
+	}
+
+	// Similar Issues Section
+	if similarSection := s.buildSimilarSection(ctx); similarSection != "" {
+		sections = append(sections, similarSection)
+	}
+
+	// Duplicate Warning Section
+	if duplicateSection := s.buildDuplicateSection(ctx); duplicateSection != "" {
+		sections = append(sections, duplicateSection)
+	}
+
+	// Footer
+	sections = append(sections, "---\n*AI-powered analysis by Simili-Bot*")
+
+	return strings.Join(sections, "\n")
+}
+
+// buildQualitySection creates the quality assessment section.
+func (s *ResponseBuilder) buildQualitySection(ctx *pipeline.Context) string {
+	qualityResult, ok := ctx.Metadata["quality_result"].(*gemini.QualityResult)
+	if !ok || qualityResult == nil {
 		return ""
 	}
 
-	// Add Simili footer
-	return fmt.Sprintf("%s\n\n*(AI-generated response by Simili)*", response)
+	var parts []string
+	parts = append(parts, "### Quality Assessment")
+
+	// Score and assessment
+	scoreDisplay := fmt.Sprintf("%.1f/10", qualityResult.Score*10)
+	assessment := strings.Title(qualityResult.Assessment)
+	parts = append(parts, fmt.Sprintf("**Score:** %s (%s)", scoreDisplay, assessment))
+
+	// Issues found
+	if len(qualityResult.Issues) > 0 {
+		for _, issue := range qualityResult.Issues {
+			parts = append(parts, fmt.Sprintf("- ⚠️ %s", issue))
+		}
+	} else {
+		parts = append(parts, "- ✅ Issue is well-described")
+	}
+
+	// Suggestions
+	if len(qualityResult.Suggestions) > 0 {
+		parts = append(parts, "\n**Suggestions:**")
+		for _, suggestion := range qualityResult.Suggestions {
+			parts = append(parts, fmt.Sprintf("- %s", suggestion))
+		}
+	}
+
+	parts = append(parts, "")
+	return strings.Join(parts, "\n")
 }
 
-func (s *ResponseBuilder) buildTemplateResponse(ctx *pipeline.Context) string {
+// buildLabelsSection creates the labels section.
+func (s *ResponseBuilder) buildLabelsSection(ctx *pipeline.Context) string {
+	if len(ctx.Result.SuggestedLabels) == 0 {
+		return ""
+	}
+
 	var parts []string
+	parts = append(parts, "### Labels Applied")
 
-	// Similar issues section
-	if len(ctx.SimilarIssues) > 0 {
-		parts = append(parts, "## 🔍 Similar Issues Found\n")
-		parts = append(parts, "I found some issues that might be related:\n")
-		for _, similar := range ctx.SimilarIssues {
-			parts = append(parts, fmt.Sprintf("- [#%d](%s) - %s (%.0f%% similar)",
-				similar.Number, similar.URL, similar.Title, similar.Similarity*100))
+	labels := make([]string, len(ctx.Result.SuggestedLabels))
+	for i, label := range ctx.Result.SuggestedLabels {
+		labels[i] = fmt.Sprintf("`%s`", label)
+	}
+	parts = append(parts, strings.Join(labels, ", "))
+	parts = append(parts, "")
+
+	return strings.Join(parts, "\n")
+}
+
+// buildTransferSection creates the transfer suggestion section.
+func (s *ResponseBuilder) buildTransferSection(ctx *pipeline.Context) string {
+	routerResult, ok := ctx.Metadata["router_result"].(*gemini.RouterResult)
+	if !ok || routerResult == nil || routerResult.BestMatch == nil {
+		return ""
+	}
+
+	match := routerResult.BestMatch
+	confidence := match.Confidence
+
+	// Only show if medium or high confidence
+	if confidence < ctx.Config.Transfer.MediumConfidence {
+		return ""
+	}
+
+	var parts []string
+	parts = append(parts, "### Transfer Suggestion")
+
+	targetRepo := fmt.Sprintf("%s/%s", match.Org, match.Repo)
+	confidencePct := int(confidence * 100)
+
+	if confidence >= ctx.Config.Transfer.HighConfidence {
+		parts = append(parts, fmt.Sprintf("🔄 **Transferring to %s** (%d%% confidence)", targetRepo, confidencePct))
+	} else {
+		parts = append(parts, fmt.Sprintf("This issue might be better suited for **%s** (%d%% confidence)", targetRepo, confidencePct))
+	}
+
+	parts = append(parts, fmt.Sprintf("**Reason:** %s", match.Reasoning))
+
+	if confidence < ctx.Config.Transfer.HighConfidence {
+		parts = append(parts, "\n*React with 👍 to confirm transfer.*")
+	}
+
+	parts = append(parts, "")
+	return strings.Join(parts, "\n")
+}
+
+// buildSimilarSection creates the similar issues section.
+func (s *ResponseBuilder) buildSimilarSection(ctx *pipeline.Context) string {
+	if len(ctx.SimilarIssues) == 0 {
+		return ""
+	}
+
+	var parts []string
+	parts = append(parts, "### Similar Issues")
+
+	for _, similar := range ctx.SimilarIssues {
+		status := ""
+		if similar.State == "closed" {
+			status = " ✅"
 		}
-		parts = append(parts, "")
+		parts = append(parts, fmt.Sprintf("- [#%d](%s) - %s (%.0f%% similar, %s)%s",
+			similar.Number, similar.URL, similar.Title, similar.Similarity*100, similar.State, status))
 	}
 
-	// Transfer notification
-	if ctx.TransferTarget != "" {
-		parts = append(parts, "## 📦 Transfer Suggested\n")
-		parts = append(parts, fmt.Sprintf("This issue may belong in **%s**.\n", ctx.TransferTarget))
+	parts = append(parts, "")
+	return strings.Join(parts, "\n")
+}
+
+// buildDuplicateSection creates the duplicate warning section.
+func (s *ResponseBuilder) buildDuplicateSection(ctx *pipeline.Context) string {
+	duplicateResult, ok := ctx.Metadata["duplicate_result"].(*gemini.DuplicateResult)
+	if !ok || duplicateResult == nil || !duplicateResult.IsDuplicate {
+		return ""
 	}
 
+	var parts []string
+	parts = append(parts, "### Possible Duplicate")
+
+	confidencePct := int(duplicateResult.Confidence * 100)
+	parts = append(parts, fmt.Sprintf("⚠️ This might be a duplicate of #%d (%d%% confidence)",
+		duplicateResult.DuplicateOf, confidencePct))
+
+	if duplicateResult.Reasoning != "" {
+		parts = append(parts, fmt.Sprintf("**Reason:** %s", duplicateResult.Reasoning))
+	}
+
+	parts = append(parts, "")
 	return strings.Join(parts, "\n")
 }
