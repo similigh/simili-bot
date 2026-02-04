@@ -73,13 +73,30 @@ func (s *SimilaritySearch) Run(ctx *pipeline.Context) error {
 	foundIssues := make([]pipeline.SimilarIssue, 0, len(results))
 	for _, res := range results {
 		// Safely extract payload fields with type checking
-		// Match the indexer which uses "issue_number"
+		// Match the indexer which uses "issue_number", and handle multiple numeric types
 		var number int
-		if resNum, ok := res.Payload["number"].(float64); ok {
-			number = int(resNum)
-		} else if resNum, ok := res.Payload["issue_number"].(float64); ok {
-			number = int(resNum)
-		} else {
+		numFound := false
+
+		for _, key := range []string{"number", "issue_number"} {
+			if val, ok := res.Payload[key]; ok {
+				switch v := val.(type) {
+				case float64:
+					number = int(v)
+					numFound = true
+				case int64:
+					number = int(v)
+					numFound = true
+				case int:
+					number = v
+					numFound = true
+				}
+			}
+			if numFound {
+				break
+			}
+		}
+
+		if !numFound {
 			log.Printf("[similarity_search] WARNING: No valid issue number in payload, skipping result")
 			continue
 		}
