@@ -58,7 +58,7 @@ func (s *ActionExecutor) Run(ctx *pipeline.Context) error {
 		err := s.client.CreateComment(ctx.Ctx, ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number, comment)
 		if err != nil {
 			log.Printf("[action_executor] Failed to post comment: %v", err)
-			ctx.Result.Errors = append(ctx.Result.Errors, err)
+			ctx.Result.Errors = append(ctx.Result.Errors, err.Error())
 		} else {
 			log.Printf("[action_executor] Posted comment on issue #%d", ctx.Issue.Number)
 			ctx.Result.CommentPosted = true
@@ -70,7 +70,7 @@ func (s *ActionExecutor) Run(ctx *pipeline.Context) error {
 		newURL, err := s.client.TransferIssue(ctx.Ctx, ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number, ctx.TransferTarget)
 		if err != nil {
 			log.Printf("[action_executor] Failed to transfer issue to %s: %v", ctx.TransferTarget, err)
-			ctx.Result.Errors = append(ctx.Result.Errors, err)
+			ctx.Result.Errors = append(ctx.Result.Errors, err.Error())
 		} else {
 			log.Printf("[action_executor] Transferred issue #%d to %s (new URL: %s)", ctx.Issue.Number, ctx.TransferTarget, newURL)
 			ctx.Result.TransferTarget = ctx.TransferTarget
@@ -83,7 +83,7 @@ func (s *ActionExecutor) Run(ctx *pipeline.Context) error {
 		err := s.client.AddLabels(ctx.Ctx, ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number, ctx.Result.SuggestedLabels)
 		if err != nil {
 			log.Printf("[action_executor] Failed to add labels: %v", err)
-			ctx.Result.Errors = append(ctx.Result.Errors, err)
+			ctx.Result.Errors = append(ctx.Result.Errors, err.Error())
 		} else {
 			log.Printf("[action_executor] Added labels: %v", ctx.Result.SuggestedLabels)
 			ctx.Result.LabelsApplied = ctx.Result.SuggestedLabels

@@ -58,7 +58,7 @@ type Result struct {
 	Indexed         bool
 	SuggestedLabels []string
 	LabelsApplied   []string
-	Errors          []error
+	Errors          []string
 
 	// Quality assessment
 	QualityScore  float64  `json:"quality_score"`
