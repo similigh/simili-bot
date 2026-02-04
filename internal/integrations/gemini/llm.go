@@ -40,11 +40,62 @@ type SimilarIssueInput struct {
 
 // TriageResult holds the result of issue triage analysis.
 type TriageResult struct {
-	Quality         string   `json:"quality"`          // "good", "needs-improvement", "poor"
+	Quality         string   `json:"quality"` // "good", "needs-improvement", "poor"
 	SuggestedLabels []string `json:"suggested_labels"`
 	Reasoning       string   `json:"reasoning"`
 	IsDuplicate     bool     `json:"is_duplicate"`
 	DuplicateReason string   `json:"duplicate_reason"`
+}
+
+// RouteIssueInput represents input for repository routing.
+type RouteIssueInput struct {
+	Issue        *IssueInput
+	Repositories []RepositoryCandidate
+}
+
+// RepositoryCandidate represents a repository option for routing.
+type RepositoryCandidate struct {
+	Org         string
+	Repo        string
+	Description string
+}
+
+// RouterResult holds repository routing analysis.
+type RouterResult struct {
+	Rankings  []RepositoryRanking
+	BestMatch *RepositoryRanking
+}
+
+// RepositoryRanking represents a repository match with confidence.
+type RepositoryRanking struct {
+	Org        string  `json:"org"`
+	Repo       string  `json:"repo"`
+	Confidence float64 `json:"confidence"` // 0.0-1.0
+	Reasoning  string  `json:"reasoning"`
+}
+
+// QualityResult holds issue quality assessment.
+type QualityResult struct {
+	Score       float64  `json:"score"`       // 0.0 (poor) to 1.0 (excellent)
+	Assessment  string   `json:"assessment"`  // "excellent"|"good"|"needs-improvement"|"poor"
+	Issues      []string `json:"issues"`      // Missing elements
+	Suggestions []string `json:"suggestions"` // How to improve
+	Reasoning   string   `json:"reasoning"`
+}
+
+// DuplicateCheckInput represents input for duplicate detection.
+type DuplicateCheckInput struct {
+	CurrentIssue  *IssueInput
+	SimilarIssues []SimilarIssueInput
+}
+
+// DuplicateResult holds duplicate detection analysis.
+type DuplicateResult struct {
+	IsDuplicate   bool    `json:"is_duplicate"`
+	DuplicateOf   int     `json:"duplicate_of"` // Issue number
+	Confidence    float64 `json:"confidence"`   // 0.0-1.0
+	Reasoning     string  `json:"reasoning"`
+	SimilarIssues []int   `json:"similar_issues"` // Other potential duplicates
 }
 
 // NewLLMClient creates a new Gemini LLM client.
@@ -129,6 +180,149 @@ func (l *LLMClient) GenerateResponse(ctx context.Context, similar []SimilarIssue
 	}
 
 	return strings.TrimSpace(responseText), nil
+}
+
+// RouteIssue analyzes issue intent and ranks repositories by relevance.
+func (l *LLMClient) RouteIssue(ctx context.Context, input *RouteIssueInput) (*RouterResult, error) {
+	if len(input.Repositories) == 0 {
+		return &RouterResult{Rankings: []RepositoryRanking{}, BestMatch: nil}, nil
+	}
+
+	prompt := buildRouteIssuePrompt(input)
+
+	model := l.client.GenerativeModel(l.model)
+	model.SetTemperature(0.3)
+	model.ResponseMIMEType = "application/json"
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return nil, fmt.Errorf("failed to route issue: %w", err)
+	}
+
+	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+		return nil, fmt.Errorf("empty response from LLM")
+	}
+
+	var responseText string
+	for _, part := range resp.Candidates[0].Content.Parts {
+		if txt, ok := part.(genai.Text); ok {
+			responseText += string(txt)
+		}
+	}
+
+	var result struct {
+		Rankings []RepositoryRanking `json:"rankings"`
+	}
+	if err := json.Unmarshal([]byte(responseText), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse routing response: %w", err)
+	}
+
+	// Ensure non-nil slices
+	if result.Rankings == nil {
+		result.Rankings = []RepositoryRanking{}
+	}
+
+	// Find best match (highest confidence)
+	var bestMatch *RepositoryRanking
+	for i := range result.Rankings {
+		if bestMatch == nil || result.Rankings[i].Confidence > bestMatch.Confidence {
+			bestMatch = &result.Rankings[i]
+		}
+	}
+
+	return &RouterResult{
+		Rankings:  result.Rankings,
+		BestMatch: bestMatch,
+	}, nil
+}
+
+// AssessQuality evaluates issue completeness and clarity.
+func (l *LLMClient) AssessQuality(ctx context.Context, issue *IssueInput) (*QualityResult, error) {
+	prompt := buildQualityAssessmentPrompt(issue)
+
+	model := l.client.GenerativeModel(l.model)
+	model.SetTemperature(0.3)
+	model.ResponseMIMEType = "application/json"
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return nil, fmt.Errorf("failed to assess quality: %w", err)
+	}
+
+	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+		return nil, fmt.Errorf("empty response from LLM")
+	}
+
+	var responseText string
+	for _, part := range resp.Candidates[0].Content.Parts {
+		if txt, ok := part.(genai.Text); ok {
+			responseText += string(txt)
+		}
+	}
+
+	var result QualityResult
+	if err := json.Unmarshal([]byte(responseText), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse quality response: %w", err)
+	}
+
+	// Ensure non-nil slices
+	if result.Issues == nil {
+		result.Issues = []string{}
+	}
+	if result.Suggestions == nil {
+		result.Suggestions = []string{}
+	}
+
+	// Normalize assessment
+	switch strings.ToLower(result.Assessment) {
+	case "excellent", "good", "needs-improvement", "poor":
+		result.Assessment = strings.ToLower(result.Assessment)
+	default:
+		result.Assessment = "good"
+	}
+
+	return &result, nil
+}
+
+// DetectDuplicate analyzes semantic similarity for duplicate detection.
+func (l *LLMClient) DetectDuplicate(ctx context.Context, input *DuplicateCheckInput) (*DuplicateResult, error) {
+	if len(input.SimilarIssues) == 0 {
+		return &DuplicateResult{IsDuplicate: false, SimilarIssues: []int{}}, nil
+	}
+
+	prompt := buildDuplicateDetectionPrompt(input)
+
+	model := l.client.GenerativeModel(l.model)
+	model.SetTemperature(0.3)
+	model.ResponseMIMEType = "application/json"
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return nil, fmt.Errorf("failed to detect duplicate: %w", err)
+	}
+
+	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+		return nil, fmt.Errorf("empty response from LLM")
+	}
+
+	var responseText string
+	for _, part := range resp.Candidates[0].Content.Parts {
+		if txt, ok := part.(genai.Text); ok {
+			responseText += string(txt)
+		}
+	}
+
+	var result DuplicateResult
+	if err := json.Unmarshal([]byte(responseText), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse duplicate response: %w", err)
+	}
+
+	// Ensure non-nil slices
+	if result.SimilarIssues == nil {
+		result.SimilarIssues = []int{}
+	}
+
+	return &result, nil
 }
 
 // parseTriageResponseJSON parses the JSON LLM response into a TriageResult.
