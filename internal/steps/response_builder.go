@@ -141,9 +141,11 @@ func (s *ResponseBuilder) buildLabelsRow(ctx *pipeline.Context) string {
 		if strings.Contains(strings.ToLower(label), "urgent") || strings.Contains(strings.ToLower(label), "high") || strings.Contains(strings.ToLower(label), "bug") {
 			color = "ff7300" // Orange
 		}
-		// URL encode label
-		encodedLabel := strings.ReplaceAll(label, " ", "%20")
-		encodedLabel = strings.ReplaceAll(encodedLabel, "-", "--") // Shields.io escaping
+		// URL encode label for Shields.io
+		// Shields.io escaping: underscores -> __, hyphens -> --, spaces -> %20
+		encodedLabel := strings.ReplaceAll(label, "_", "__")
+		encodedLabel = strings.ReplaceAll(encodedLabel, "-", "--")
+		encodedLabel = strings.ReplaceAll(encodedLabel, " ", "%20")
 		badges = append(badges, fmt.Sprintf("![](https://img.shields.io/badge/%s-%s)", encodedLabel, color))
 	}
 
@@ -179,7 +181,7 @@ func (s *ResponseBuilder) buildTransferRow(ctx *pipeline.Context) string {
 		value = fmt.Sprintf("🔄 Transferred from **%s** %s", sourceRepo, confBadge)
 	} else if targetRepo == fmt.Sprintf("%s/%s", ctx.Issue.Org, ctx.Issue.Repo) {
 		// Best match is current repo
-		value = fmt.Sprintf("✅ To check **%s** %s", targetRepo, confBadge)
+		value = fmt.Sprintf("✅ Belongs in **%s** %s", targetRepo, confBadge)
 	} else {
 		// Suggestion
 		value = fmt.Sprintf("Suggested: **%s** %s", targetRepo, confBadge)
@@ -237,10 +239,11 @@ func (s *ResponseBuilder) buildSimilarSection(ctx *pipeline.Context) string {
 			status = "Closed"
 		}
 
-		// Truncate title if too long
+		// Truncate title if too long (UTF-8 safe)
 		title := similar.Title
-		if len(title) > 50 {
-			title = title[:47] + "..."
+		runes := []rune(title)
+		if len(runes) > 50 {
+			title = string(runes[:47]) + "..."
 		}
 
 		parts = append(parts, fmt.Sprintf("| %.0f%% | [#%d %s](%s) | %s |",

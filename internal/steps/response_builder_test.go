@@ -104,7 +104,7 @@ func TestResponseBuilder_buildTransferRow_CurrentRepo(t *testing.T) {
 
 	row := builder.buildTransferRow(ctx)
 
-	if !strings.Contains(row, "✅ To check **similigh/simili-bot**") {
+	if !strings.Contains(row, "✅ Belongs in **similigh/simili-bot**") {
 		t.Errorf("Expected 'Issue belongs in this repository' message, got: %s", row)
 	}
 }
