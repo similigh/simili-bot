@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-04
+// Last Modified: 2026-02-05
 
 // Package config handles loading and merging Simili configuration.
 package config
@@ -94,6 +94,7 @@ type TransferConfig struct {
 	HighConfidence               float64        `yaml:"high_confidence,omitempty"`                // Default: 0.9
 	MediumConfidence             float64        `yaml:"medium_confidence,omitempty"`              // Default: 0.6
 	DuplicateConfidenceThreshold float64        `yaml:"duplicate_confidence_threshold,omitempty"` // Default: 0.8
+	RepoCollection               string         `yaml:"repo_collection,omitempty"`                // Collection for repository documentation
 }
 
 // Load reads a config file from the given path and expands environment variables.
@@ -224,6 +225,9 @@ func (c *Config) applyDefaults() {
 	if c.Transfer.DuplicateConfidenceThreshold == 0 {
 		c.Transfer.DuplicateConfidenceThreshold = 0.8
 	}
+	if c.Transfer.RepoCollection == "" {
+		c.Transfer.RepoCollection = "simili_repos"
+	}
 }
 
 // mergeConfigs merges a child config onto a parent config.
@@ -295,6 +299,9 @@ func mergeConfigs(parent, child *Config) *Config {
 	}
 	if child.Transfer.DuplicateConfidenceThreshold != 0 {
 		result.Transfer.DuplicateConfidenceThreshold = child.Transfer.DuplicateConfidenceThreshold
+	}
+	if child.Transfer.RepoCollection != "" {
+		result.Transfer.RepoCollection = child.Transfer.RepoCollection
 	}
 
 	return &result
