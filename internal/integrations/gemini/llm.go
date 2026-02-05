@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/Kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-02
+// Last Modified: 2026-02-05
 
 package gemini
 
@@ -58,6 +58,7 @@ type RepositoryCandidate struct {
 	Org         string
 	Repo        string
 	Description string
+	Definition  string // Full repository documentation (README, etc.)
 }
 
 // RouterResult holds repository routing analysis.
