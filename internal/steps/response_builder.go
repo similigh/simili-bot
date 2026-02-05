@@ -163,13 +163,23 @@ func (s *ResponseBuilder) buildTransferSection(ctx *pipeline.Context) string {
 
 	if confidence >= ctx.Config.Transfer.MediumConfidence {
 		sourceRepo, _ := ctx.Metadata["original_repo"].(string)
+		currentRepo := fmt.Sprintf("%s/%s", ctx.Issue.Org, ctx.Issue.Repo)
+
 		if sourceRepo != "" {
+			// Actually transferred from another repo
 			parts = append(parts, fmt.Sprintf("🔄 **Transferred from %s** (%d%% confidence)", sourceRepo, confidencePct))
+			parts = append(parts, fmt.Sprintf("**Reason:** %s", match.Reasoning))
+			parts = append(parts, "\n*If this transfer was incorrect, comment `/undo` to move it back.*")
+		} else if targetRepo == currentRepo {
+			// Best match is current repo - no transfer needed
+			parts = append(parts, fmt.Sprintf("✅ **Issue belongs in this repository** (%d%% confidence)", confidencePct))
+			parts = append(parts, fmt.Sprintf("**Reason:** %s", match.Reasoning))
 		} else {
+			// This shouldn't happen now, but keeping as fallback
 			parts = append(parts, fmt.Sprintf("🔄 **Transferring to %s** (%d%% confidence)", targetRepo, confidencePct))
+			parts = append(parts, fmt.Sprintf("**Reason:** %s", match.Reasoning))
+			parts = append(parts, "\n*If this transfer was incorrect, comment `/undo` to move it back.*")
 		}
-		parts = append(parts, fmt.Sprintf("**Reason:** %s", match.Reasoning))
-		parts = append(parts, "\n*If this transfer was incorrect, comment `/undo` to move it back.*")
 	} else {
 		parts = append(parts, fmt.Sprintf("This issue might be better suited for **%s** (%d%% confidence)", targetRepo, confidencePct))
 		parts = append(parts, fmt.Sprintf("**Reason:** %s", match.Reasoning))
