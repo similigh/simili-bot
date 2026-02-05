@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/kavirubc
 // Created: 2026-02-04
-// Last Modified: 2026-02-04
+// Last Modified: 2026-02-05
 
 package steps
 
@@ -11,17 +11,22 @@ import (
 
 	"github.com/similigh/simili-bot/internal/core/pipeline"
 	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/qdrant"
 )
 
 // LLMRouter analyzes issue intent and routes to best repository using LLM.
 type LLMRouter struct {
-	llm *gemini.LLMClient
+	llm      *gemini.LLMClient
+	embedder *gemini.Embedder
+	store    qdrant.VectorStore
 }
 
 // NewLLMRouter creates a new LLM router step.
 func NewLLMRouter(deps *pipeline.Dependencies) *LLMRouter {
 	return &LLMRouter{
-		llm: deps.LLMClient,
+		llm:      deps.LLMClient,
+		embedder: deps.Embedder,
+		store:    deps.VectorStore,
 	}
 }
 
@@ -77,6 +82,82 @@ func (s *LLMRouter) Run(ctx *pipeline.Context) error {
 	if len(candidates) == 0 {
 		log.Printf("[llm_router] No candidate repositories with descriptions, skipping")
 		return nil
+	}
+
+	// Fetch repository definitions from repo collection (if available)
+	repoDefinitions := make(map[string]string) // map[org/repo]full_definition
+
+	if s.embedder != nil && s.store != nil && ctx.Config.Transfer.RepoCollection != "" {
+		// Check if repo collection exists
+		exists, err := s.store.CollectionExists(ctx.Ctx, ctx.Config.Transfer.RepoCollection)
+		if err != nil {
+			log.Printf("[llm_router] Error checking repo collection: %v (non-blocking)", err)
+		} else if !exists {
+			log.Printf("[llm_router] Repo collection '%s' not found, using config descriptions",
+				ctx.Config.Transfer.RepoCollection)
+		} else {
+			// Generate embedding for issue to find relevant repos
+			issueContent := fmt.Sprintf("%s\n\n%s", ctx.Issue.Title, ctx.Issue.Body)
+			issueEmbedding, err := s.embedder.Embed(ctx.Ctx, issueContent)
+
+			if err != nil {
+				log.Printf("[llm_router] Error generating issue embedding: %v (non-blocking)", err)
+			} else {
+				// Search for relevant repository definitions
+				// Use broader threshold (0.5) and higher limit (10) to get context
+				results, err := s.store.Search(
+					ctx.Ctx,
+					ctx.Config.Transfer.RepoCollection,
+					issueEmbedding,
+					10,  // Get top 10 relevant repo docs (more than we'll route to)
+					0.5, // Lower threshold than issues (0.65-0.7) for broader context
+				)
+
+				if err != nil {
+					log.Printf("[llm_router] Error searching repo collection: %v (non-blocking)", err)
+				} else if len(results) == 0 {
+					log.Printf("[llm_router] No repository definitions found")
+				} else {
+					// Collect definitions per repo (handle multiple files per repo)
+					for _, res := range results {
+						org, _ := res.Payload["org"].(string)
+						repo, _ := res.Payload["repo"].(string)
+						text, _ := res.Payload["text"].(string)
+						file, _ := res.Payload["file"].(string)
+
+						if org == "" || repo == "" || text == "" {
+							log.Printf("[llm_router] Invalid repo definition payload, skipping")
+							continue
+						}
+
+						repoKey := fmt.Sprintf("%s/%s", org, repo)
+
+						// If multiple docs for same repo, concatenate with separators
+						if existing, ok := repoDefinitions[repoKey]; ok {
+							// Add file header for clarity
+							repoDefinitions[repoKey] = existing + fmt.Sprintf("\n\n--- %s ---\n\n", file) + text
+						} else {
+							// First document for this repo
+							if file != "README.md" {
+								repoDefinitions[repoKey] = fmt.Sprintf("--- %s ---\n\n", file) + text
+							} else {
+								repoDefinitions[repoKey] = text
+							}
+						}
+					}
+					log.Printf("[llm_router] Loaded %d repository definitions from %d documents",
+						len(repoDefinitions), len(results))
+				}
+			}
+		}
+	}
+
+	// Enhance candidates with full definitions
+	for i := range candidates {
+		repoKey := fmt.Sprintf("%s/%s", candidates[i].Org, candidates[i].Repo)
+		if def, ok := repoDefinitions[repoKey]; ok {
+			candidates[i].Definition = def
+		}
 	}
 
 	// Call LLM to route issue
