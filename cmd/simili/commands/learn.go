@@ -7,12 +7,14 @@ package commands
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	similiConfig "github.com/similigh/simili-bot/internal/core/config"
 	"github.com/similigh/simili-bot/internal/integrations/gemini"
 	similiGithub "github.com/similigh/simili-bot/internal/integrations/github"
@@ -103,11 +105,17 @@ func runLearn(cmd *cobra.Command, args []string) {
 		defer qdrantClient.Close()
 	}
 
-	// 5. Fetch File from GitHub
-	log.Printf("Fetching %s from %s/%s...", learnFile, learnOrg, learnRepo)
-	content, err := ghClient.GetFileContent(ctx, learnOrg, learnRepo, learnFile, "")
+	// 5. Validate and fetch file from GitHub
+	// Clean path and validate (prevent path traversal)
+	cleanPath := filepath.Clean(learnFile)
+	if strings.Contains(cleanPath, "..") || strings.HasPrefix(cleanPath, "/") {
+		log.Fatalf("Invalid file path: %s (path traversal not allowed)", learnFile)
+	}
+
+	log.Printf("Fetching %s from %s/%s...", cleanPath, learnOrg, learnRepo)
+	content, err := ghClient.GetFileContent(ctx, learnOrg, learnRepo, cleanPath, "")
 	if err != nil {
-		log.Fatalf("Failed to fetch %s from %s/%s: %v", learnFile, learnOrg, learnRepo, err)
+		log.Fatalf("Failed to fetch %s from %s/%s: %v", cleanPath, learnOrg, learnRepo, err)
 	}
 
 	if len(content) == 0 {
@@ -116,7 +124,7 @@ func runLearn(cmd *cobra.Command, args []string) {
 	}
 
 	contentStr := string(content)
-	log.Printf("Fetched %d characters from %s", len(contentStr), learnFile)
+	log.Printf("Fetched %d characters from %s", len(contentStr), cleanPath)
 
 	// 6. Generate Embedding
 	log.Printf("Generating embedding...")
@@ -127,13 +135,18 @@ func runLearn(cmd *cobra.Command, args []string) {
 	log.Printf("Generated embedding with %d dimensions", len(embedding))
 
 	// 7. Create Point with Rich Payload
+	// Use deterministic ID based on org/repo/file to enable idempotent updates
+	idKey := fmt.Sprintf("%s/%s/%s", learnOrg, learnRepo, cleanPath)
+	hash := sha256.Sum256([]byte(idKey))
+	deterministicID := fmt.Sprintf("%x", hash[:16]) // Use first 16 bytes for UUID-like format
+
 	point := &qdrant.Point{
-		ID:     uuid.New().String(),
+		ID:     deterministicID,
 		Vector: embedding,
 		Payload: map[string]interface{}{
 			"org":        learnOrg,
 			"repo":       learnRepo,
-			"file":       learnFile,
+			"file":       cleanPath,
 			"text":       contentStr,
 			"indexed_at": time.Now().Format(time.RFC3339),
 			"type":       "repo_doc",

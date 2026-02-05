@@ -119,6 +119,9 @@ func (s *LLMRouter) Run(ctx *pipeline.Context) error {
 					log.Printf("[llm_router] No repository definitions found")
 				} else {
 					// Collect definitions per repo (handle multiple files per repo)
+					// Max total size per repo to prevent token explosion
+					const maxTotalSizePerRepo = 5000
+
 					for _, res := range results {
 						org, _ := res.Payload["org"].(string)
 						repo, _ := res.Payload["repo"].(string)
@@ -132,17 +135,25 @@ func (s *LLMRouter) Run(ctx *pipeline.Context) error {
 
 						repoKey := fmt.Sprintf("%s/%s", org, repo)
 
-						// If multiple docs for same repo, concatenate with separators
+						// Build new definition with file header
+						newDoc := fmt.Sprintf("--- %s ---\n\n%s", file, text)
+
+						// If multiple docs for same repo, concatenate with size limit
 						if existing, ok := repoDefinitions[repoKey]; ok {
-							// Add file header for clarity
-							repoDefinitions[repoKey] = existing + fmt.Sprintf("\n\n--- %s ---\n\n", file) + text
+							combined := existing + "\n\n" + newDoc
+							// Enforce max total size per repo
+							if len(combined) > maxTotalSizePerRepo {
+								log.Printf("[llm_router] Truncating %s definition (size: %d > %d)",
+									repoKey, len(combined), maxTotalSizePerRepo)
+								combined = combined[:maxTotalSizePerRepo] + "\n... (truncated)"
+							}
+							repoDefinitions[repoKey] = combined
 						} else {
 							// First document for this repo
-							if file != "README.md" {
-								repoDefinitions[repoKey] = fmt.Sprintf("--- %s ---\n\n", file) + text
-							} else {
-								repoDefinitions[repoKey] = text
+							if len(newDoc) > maxTotalSizePerRepo {
+								newDoc = newDoc[:maxTotalSizePerRepo] + "\n... (truncated)"
 							}
+							repoDefinitions[repoKey] = newDoc
 						}
 					}
 					log.Printf("[llm_router] Loaded %d repository definitions from %d documents",

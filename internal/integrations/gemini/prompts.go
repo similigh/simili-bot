@@ -10,12 +10,13 @@ import (
 	"strings"
 )
 
-// truncate limits a string to a maximum length.
+// truncate limits a string to a maximum length in runes (UTF-8 safe).
 func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
 		return s
 	}
-	return s[:maxLen] + "..."
+	return string(runes[:maxLen]) + "..."
 }
 
 // indentText indents each non-empty line of text with the given prefix.
