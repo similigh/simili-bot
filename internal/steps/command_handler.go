@@ -148,7 +148,11 @@ func (s *CommandHandler) handleUndo(ctx *pipeline.Context) error {
 	log.Printf("[command_handler] Reversing transfer back to %s", sourceRepo)
 	ctx.TransferTarget = sourceRepo
 	ctx.Metadata["reverse_transfer"] = true
-	ctx.Metadata["comment"] = fmt.Sprintf("🔄 **Undoing transfer.** Moving issue back to `%s` as requested by @%s.", sourceRepo, ctx.Issue.CommentAuthor)
+
+	// Professional Alert style
+	ctx.Metadata["comment"] = fmt.Sprintf(`> [!NOTE]
+> **Transfer Reverted**
+> Issue moved back to **%s** (requested by @%s).`, sourceRepo, ctx.Issue.CommentAuthor)
 
 	return nil
 }
