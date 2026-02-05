@@ -169,7 +169,6 @@ func (s *ResponseBuilder) buildTransferRow(ctx *pipeline.Context) string {
 	confidencePct := int(confidence * 100)
 
 	sourceRepo, _ := ctx.Metadata["original_repo"].(string)
-	currentRepo := fmt.Sprintf("%s/%s", ctx.Issue.Org, ctx.Issue.Repo)
 
 	var value string
 	// Black for text, Orange for confidence badge
@@ -178,12 +177,15 @@ func (s *ResponseBuilder) buildTransferRow(ctx *pipeline.Context) string {
 	if sourceRepo != "" {
 		// Actually transferred from another repo
 		value = fmt.Sprintf("🔄 Transferred from **%s** %s", sourceRepo, confBadge)
-	} else if targetRepo == currentRepo {
-		// Best match is current repo
-		value = fmt.Sprintf("✅ To check **%s** %s", targetRepo, confBadge)
 	} else {
-		// Suggestion
-		value = fmt.Sprintf("Suggested: **%s** %s", targetRepo, confBadge)
+		currentRepo := fmt.Sprintf("%s/%s", ctx.Issue.Org, ctx.Issue.Repo)
+		if targetRepo == currentRepo {
+			// Best match is current repo
+			value = fmt.Sprintf("✅ To check **%s** %s", targetRepo, confBadge)
+		} else {
+			// Suggestion
+			value = fmt.Sprintf("Suggested: **%s** %s", targetRepo, confBadge)
+		}
 	}
 
 	return fmt.Sprintf("| **Transfer** | %s |", value)
@@ -233,11 +235,9 @@ func (s *ResponseBuilder) buildSimilarSection(ctx *pipeline.Context) string {
 	parts = append(parts, "| :--- | :--- | :--- |")
 
 	for _, similar := range ctx.SimilarIssues {
-		status := similar.State
+		status := "Open"
 		if similar.State == "closed" {
 			status = "Closed"
-		} else {
-			status = "Open"
 		}
 
 		// Truncate title if too long
