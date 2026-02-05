@@ -171,7 +171,6 @@ func (s *LLMRouter) Run(ctx *pipeline.Context) error {
 	}
 
 	// Call LLM to route issue (reuse currentRepo from above)
-	currentRepo = fmt.Sprintf("%s/%s", ctx.Issue.Org, ctx.Issue.Repo)
 	input := &gemini.RouteIssueInput{
 		Issue: &gemini.IssueInput{
 			Title:  ctx.Issue.Title,

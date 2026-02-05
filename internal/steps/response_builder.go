@@ -177,15 +177,12 @@ func (s *ResponseBuilder) buildTransferRow(ctx *pipeline.Context) string {
 	if sourceRepo != "" {
 		// Actually transferred from another repo
 		value = fmt.Sprintf("🔄 Transferred from **%s** %s", sourceRepo, confBadge)
+	} else if targetRepo == fmt.Sprintf("%s/%s", ctx.Issue.Org, ctx.Issue.Repo) {
+		// Best match is current repo
+		value = fmt.Sprintf("✅ To check **%s** %s", targetRepo, confBadge)
 	} else {
-		currentRepo := fmt.Sprintf("%s/%s", ctx.Issue.Org, ctx.Issue.Repo)
-		if targetRepo == currentRepo {
-			// Best match is current repo
-			value = fmt.Sprintf("✅ To check **%s** %s", targetRepo, confBadge)
-		} else {
-			// Suggestion
-			value = fmt.Sprintf("Suggested: **%s** %s", targetRepo, confBadge)
-		}
+		// Suggestion
+		value = fmt.Sprintf("Suggested: **%s** %s", targetRepo, confBadge)
 	}
 
 	return fmt.Sprintf("| **Transfer** | %s |", value)
