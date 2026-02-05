@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/Kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-02
+// Last Modified: 2026-02-05
 
 package gemini
 
@@ -9,6 +9,25 @@ import (
 	"fmt"
 	"strings"
 )
+
+// truncate limits a string to a maximum length.
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
+// indentText indents each non-empty line of text with the given prefix.
+func indentText(text string, indent string) string {
+	lines := strings.Split(text, "\n")
+	for i := range lines {
+		if lines[i] != "" {
+			lines[i] = indent + lines[i]
+		}
+	}
+	return strings.Join(lines, "\n")
+}
 
 // buildTriagePromptJSON creates a prompt for issue triage analysis with JSON output.
 func buildTriagePromptJSON(issue *IssueInput) string {
@@ -106,8 +125,41 @@ Keep the response under 200 words.`,
 // buildRouteIssuePrompt creates a prompt for repository routing analysis.
 func buildRouteIssuePrompt(input *RouteIssueInput) string {
 	var repoList strings.Builder
+	hasDefinitions := false
+
 	for i, r := range input.Repositories {
-		repoList.WriteString(fmt.Sprintf("%d. %s/%s: %s\n", i+1, r.Org, r.Repo, r.Description))
+		repoList.WriteString(fmt.Sprintf("%d. %s/%s\n", i+1, r.Org, r.Repo))
+
+		// Include full definition if available
+		if r.Definition != "" {
+			hasDefinitions = true
+			// Truncate if too long (max 2000 chars per repo to prevent token explosion)
+			definition := r.Definition
+			if len(definition) > 2000 {
+				definition = definition[:2000] + "\n... (truncated)"
+			}
+			repoList.WriteString(fmt.Sprintf("   Documentation:\n%s\n\n", indentText(definition, "   ")))
+		} else if r.Description != "" {
+			// Fallback to short description from config
+			repoList.WriteString(fmt.Sprintf("   Description: %s\n", r.Description))
+		}
+		repoList.WriteString("\n")
+	}
+
+	// Build weighting guidance based on available information
+	weightingGuidance := ""
+	if hasDefinitions {
+		weightingGuidance = `
+Decision-Making Framework:
+- Primary consideration (~60% weight): Match the issue against repository documentation
+  to understand what each repo is responsible for and what problems it solves
+- Secondary consideration (~40% weight): Consider any historical patterns or precedents
+  from similar issues, if available
+- The repository documentation provides the authoritative definition of what belongs where
+- When documentation clearly indicates a match, prioritize it over other signals`
+	} else {
+		weightingGuidance = `
+Note: Limited repository documentation available. Base routing primarily on repository descriptions.`
 	}
 
 	return fmt.Sprintf(`You are an AI assistant helping route GitHub issues to the correct repository.
@@ -118,10 +170,13 @@ Issue Details:
 
 Available Repositories:
 %s
+%s
 
-Analyze the issue content and rank ALL repositories by relevance. For each repository, provide:
+Task: Analyze the issue content and rank ALL repositories by relevance.
+
+For each repository, provide:
 - Confidence score (0.0-1.0) indicating how well the issue matches the repository
-- Brief reasoning for the score
+- Brief reasoning explaining your score
 
 Respond with valid JSON in this exact format:
 {
@@ -130,19 +185,21 @@ Respond with valid JSON in this exact format:
       "org": "org-name",
       "repo": "repo-name",
       "confidence": 0.85,
-      "reasoning": "Issue describes API errors which are handled by this backend service"
+      "reasoning": "Issue describes API authentication errors. The backend repository's documentation indicates it handles the authentication service and API layer."
     }
   ]
 }
 
-Guidelines:
-- Confidence 0.9+ = Very strong match
-- Confidence 0.6-0.9 = Possible match
-- Confidence <0.6 = Weak or no match
-- Include ALL repositories in rankings, even with low confidence`,
+Confidence Score Guidelines:
+- 0.9+ = Very strong match (issue clearly aligns with repo's documented responsibilities)
+- 0.6-0.9 = Probable match (issue has significant alignment with repo's purpose)
+- <0.6 = Weak or no match (little to no alignment with repo's documented purpose)
+
+Important: Include ALL repositories in your rankings, even those with low confidence scores.`,
 		input.Issue.Title,
 		truncate(input.Issue.Body, 1000),
 		repoList.String(),
+		weightingGuidance,
 	)
 }
 
@@ -227,12 +284,4 @@ Only set is_duplicate to true if confidence >= 0.8`,
 		truncate(input.CurrentIssue.Body, 1000),
 		similarList.String(),
 	)
-}
-
-// truncate limits a string to a maximum length.
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
 }
