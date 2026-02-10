@@ -70,6 +70,103 @@ You can specify a `workflow` in your `simili.yaml` or define custom steps.
 | `similarity-only` | Runs similarity search only. Useful for "Find Similar Issues" features without auto-triage. |
 | `index-only` | Indexes issues to the vector database without providing feedback. |
 
+## CLI Commands
+
+Simili provides a powerful CLI for local development, testing, and batch operations.
+
+### `simili index`
+
+Bulk index issues from a GitHub repository into the vector database.
+
+```bash
+simili index --repo owner/repo --workers 5 --limit 100
+```
+
+**Flags:**
+- `--repo` (required): Target repository (owner/name)
+- `--workers`: Number of concurrent workers (default: 5)
+- `--since`: Start from issue number or timestamp
+- `--limit`: Maximum issues to index
+- `--dry-run`: Simulate without writing to database
+
+### `simili process`
+
+Process a single issue through the pipeline.
+
+```bash
+simili process --issue issue.json --workflow issue-triage --dry-run
+```
+
+**Flags:**
+- `--issue`: Path to issue JSON file
+- `--workflow`: Workflow preset to run (default: "issue-triage")
+- `--dry-run`: Run without side effects
+- `--repo`, `--org`, `--number`: Override issue fields
+
+### `simili batch`
+
+Process multiple issues from a JSON file in batch mode. **All operations run in dry-run mode** to prevent GitHub writes.
+
+```bash
+simili batch --file issues.json --format csv --out-file results.csv --workers 5
+```
+
+**Use Cases:**
+- Test bot logic on historical data without spamming repositories
+- Generate reports showing similarity analysis and duplicate detection
+- Analyze issues from repositories where you lack write access
+- Bulk identify transfer recommendations and quality scores
+
+**Flags:**
+- `--file` (required): Path to JSON file with array of issues
+- `--out-file`: Output file path (stdout if not specified)
+- `--format`: Output format: `json` or `csv` (default: `json`)
+- `--workers`: Number of concurrent workers (default: 1)
+- `--workflow`: Workflow preset (default: "issue-triage")
+- `--collection`: Override Qdrant collection name
+- `--threshold`: Override similarity threshold
+- `--duplicate-threshold`: Override duplicate confidence threshold
+- `--top-k`: Override max similar issues to show
+
+**Input Format:**
+
+Create a JSON file with an array of issues:
+
+```json
+[
+  {
+    "org": "owner",
+    "repo": "repo-name",
+    "number": 123,
+    "title": "Issue title",
+    "body": "Issue description...",
+    "state": "open",
+    "labels": ["bug", "high-priority"],
+    "author": "username",
+    "created_at": "2026-02-10T10:00:00Z"
+  }
+]
+```
+
+**Output Formats:**
+
+- **JSON**: Full pipeline results with detailed analysis
+- **CSV**: Flattened summary for spreadsheet analysis
+
+**Example Workflow:**
+
+```bash
+# 1. Index repository issues
+simili index --repo ballerina-platform/ballerina-library --workers 10
+
+# 2. Prepare test issues in batch.json
+# 3. Run batch analysis
+simili batch --file batch.json --format csv --out-file analysis.csv --workers 5
+
+# 4. Review results
+cat analysis.csv
+```
+
 ## Development
 
 ```bash
