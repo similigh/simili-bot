@@ -65,6 +65,7 @@ func (s *DuplicateDetector) Run(ctx *pipeline.Context) error {
 		similarInput[i] = gemini.SimilarIssueInput{
 			Number:     ctx.SimilarIssues[i].Number,
 			Title:      ctx.SimilarIssues[i].Title,
+			Body:       ctx.SimilarIssues[i].Body,
 			URL:        ctx.SimilarIssues[i].URL,
 			Similarity: ctx.SimilarIssues[i].Similarity,
 			State:      ctx.SimilarIssues[i].State,
@@ -96,6 +97,9 @@ func (s *DuplicateDetector) Run(ctx *pipeline.Context) error {
 		threshold = 0.8
 	}
 
+	// Store reasoning regardless of duplicate status
+	ctx.Result.DuplicateReason = result.Reasoning
+
 	// Mark as duplicate if high confidence
 	if result.IsDuplicate && result.Confidence >= threshold {
 		ctx.Result.IsDuplicate = true
@@ -104,7 +108,7 @@ func (s *DuplicateDetector) Run(ctx *pipeline.Context) error {
 		log.Printf("[duplicate_detector] Duplicate detected: #%d (%.2f confidence)",
 			result.DuplicateOf, result.Confidence)
 	} else {
-		log.Printf("[duplicate_detector] No high-confidence duplicate found")
+		log.Printf("[duplicate_detector] No high-confidence duplicate found (reason: %s)", result.Reasoning)
 	}
 
 	return nil

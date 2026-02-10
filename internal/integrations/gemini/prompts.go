@@ -259,42 +259,54 @@ Assessment must be one of: "excellent", "good", "needs-improvement", "poor"`,
 func buildDuplicateDetectionPrompt(input *DuplicateCheckInput) string {
 	var similarList strings.Builder
 	for i, s := range input.SimilarIssues {
-		similarList.WriteString(fmt.Sprintf("%d. #%d: %s (%.0f%% similar, %s)\n",
-			i+1, s.Number, s.Title, s.Similarity*100, s.State))
+		body := truncate(s.Body, 500)
+		fmt.Fprintf(&similarList, "--- Similar Issue %d ---\n", i+1)
+		fmt.Fprintf(&similarList, "Issue #%d [%s]: %s\nVector similarity: %.0f%%\n",
+			s.Number, s.State, s.Title, s.Similarity*100)
+		if body != "" {
+			fmt.Fprintf(&similarList, "Content:\n%s\n", body)
+		}
+		similarList.WriteString("\n")
 	}
 
-	return fmt.Sprintf(`You are an AI assistant detecting duplicate GitHub issues.
+	return fmt.Sprintf(`You are a precise duplicate detection system for GitHub issues.
+
+CRITICAL DISTINCTION:
+- DUPLICATE: Two issues describe the EXACT SAME bug or feature request. Fixing one FULLY resolves the other. They must have the same root cause AND the same expected outcome.
+- RELATED: Two issues are in the same area or component but describe DIFFERENT problems. They may share keywords or affect the same module, but have different root causes or expected outcomes.
+
+Being related is NOT enough to be a duplicate. Most issues in the same project will be related.
 
 Current Issue:
 - Title: %s
 - Body: %s
 
-Similar Issues Found:
+Similar Issues Found (by vector similarity — high similarity does NOT mean duplicate):
 %s
 
-Analyze whether the current issue is a duplicate of any similar issues. Consider:
-1. Are they describing the same problem/feature?
-2. Do they have the same root cause?
-3. Would fixing one resolve the other?
+Compare the FULL CONTENT of the current issue against each similar issue. Look for:
+1. Same root cause — not just same component or area
+2. Same expected outcome — not just similar symptoms
+3. Would a single fix resolve BOTH issues completely?
 
-Note: High vector similarity doesn't always mean duplicate. Issues can be related but distinct.
+If two issues affect the same module but describe different failure modes, different inputs, or different expected behaviors, they are RELATED, not duplicates.
 
-Respond with valid JSON in this exact format:
+Respond with valid JSON:
 {
-  "is_duplicate": true,
-  "duplicate_of": 42,
-  "confidence": 0.9,
-  "reasoning": "Both issues describe the same API timeout error with identical reproduction steps",
-  "similar_issues": [38, 45]
+  "is_duplicate": false,
+  "duplicate_of": 0,
+  "confidence": 0.0,
+  "reasoning": "Brief explanation",
+  "similar_issues": []
 }
 
-Confidence guidelines:
-- 0.9+ = Very likely duplicate
-- 0.7-0.9 = Probable duplicate
-- 0.5-0.7 = Possibly related
-- <0.5 = Different issues
+Confidence scale (be strict):
+- 0.95+ = Certain duplicate (identical problem, identical root cause)
+- 0.85-0.95 = Very likely duplicate (same root cause, same expected fix)
+- 0.70-0.85 = Related but likely distinct issues
+- <0.70 = Different issues
 
-Only set is_duplicate to true if confidence >= 0.8`,
+ONLY set is_duplicate to true if confidence >= 0.85. When in doubt, set is_duplicate to false.`,
 		input.CurrentIssue.Title,
 		truncate(input.CurrentIssue.Body, 1000),
 		similarList.String(),

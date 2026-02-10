@@ -75,12 +75,14 @@ type Result struct {
 	IsDuplicate         bool    `json:"is_duplicate"`
 	DuplicateOf         int     `json:"duplicate_of"`
 	DuplicateConfidence float64 `json:"duplicate_confidence"`
+	DuplicateReason     string  `json:"duplicate_reason,omitempty"`
 }
 
 // SimilarIssue represents an issue found to be similar.
 type SimilarIssue struct {
 	Number     int
 	Title      string
+	Body       string // Full text content from vector DB (may include title prefix)
 	URL        string
 	Similarity float64
 	State      string

@@ -5,6 +5,8 @@ qdrant:
 embedding:
   provider: gemini
   api_key: ${GEMINI_API_KEY}
+  model: gemini-embedding-001
+  dimensions: 768
 defaults:
   similarity_threshold: 0.7
   max_similar_to_show: 5

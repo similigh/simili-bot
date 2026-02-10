@@ -33,6 +33,7 @@ type IssueInput struct {
 type SimilarIssueInput struct {
 	Number     int
 	Title      string
+	Body       string // Full text content from vector DB
 	URL        string
 	Similarity float64
 	State      string
@@ -93,11 +94,11 @@ type DuplicateCheckInput struct {
 
 // DuplicateResult holds duplicate detection analysis.
 type DuplicateResult struct {
-	IsDuplicate   bool    `json:"is_duplicate"`
-	DuplicateOf   int     `json:"duplicate_of"` // Issue number
-	Confidence    float64 `json:"confidence"`   // 0.0-1.0
-	Reasoning     string  `json:"reasoning"`
-	SimilarIssues []int   `json:"similar_issues"` // Other potential duplicates
+	IsDuplicate   bool            `json:"is_duplicate"`
+	DuplicateOf   int             `json:"duplicate_of"` // Issue number
+	Confidence    float64         `json:"confidence"`   // 0.0-1.0
+	Reasoning     string          `json:"reasoning"`
+	SimilarIssues json.RawMessage `json:"similar_issues"` // Flexible: can be []int or []object
 }
 
 // NewLLMClient creates a new Gemini LLM client.
@@ -289,7 +290,7 @@ func (l *LLMClient) AssessQuality(ctx context.Context, issue *IssueInput) (*Qual
 // DetectDuplicate analyzes semantic similarity for duplicate detection.
 func (l *LLMClient) DetectDuplicate(ctx context.Context, input *DuplicateCheckInput) (*DuplicateResult, error) {
 	if len(input.SimilarIssues) == 0 {
-		return &DuplicateResult{IsDuplicate: false, SimilarIssues: []int{}}, nil
+		return &DuplicateResult{IsDuplicate: false, SimilarIssues: json.RawMessage("[]")}, nil
 	}
 
 	prompt := buildDuplicateDetectionPrompt(input)
@@ -319,9 +320,9 @@ func (l *LLMClient) DetectDuplicate(ctx context.Context, input *DuplicateCheckIn
 		return nil, fmt.Errorf("failed to parse duplicate response: %w", err)
 	}
 
-	// Ensure non-nil slices
+	// Ensure non-nil SimilarIssues
 	if result.SimilarIssues == nil {
-		result.SimilarIssues = []int{}
+		result.SimilarIssues = json.RawMessage("[]")
 	}
 
 	return &result, nil

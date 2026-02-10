@@ -112,9 +112,10 @@ func (s *SimilaritySearch) Run(ctx *pipeline.Context) error {
 
 		// Safely extract other fields, with fallbacks
 		title, _ := res.Payload["title"].(string)
+		fullText, _ := res.Payload["text"].(string)
+
 		if title == "" {
 			// Try to extract from text if title is missing (indexers often put it there)
-			fullText, _ := res.Payload["text"].(string)
 			if strings.HasPrefix(fullText, "Title: ") {
 				lines := strings.SplitN(fullText, "\n", 2)
 				title = strings.TrimPrefix(lines[0], "Title: ")
@@ -132,6 +133,7 @@ func (s *SimilaritySearch) Run(ctx *pipeline.Context) error {
 		issue := pipeline.SimilarIssue{
 			Number:     number,
 			Title:      title,
+			Body:       fullText,
 			URL:        url,
 			State:      state,
 			Similarity: float64(res.Score),
