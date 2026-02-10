@@ -44,8 +44,10 @@ func (s *statusReportingStep) Run(ctx *pipeline.Context) error {
 	return nil
 }
 
-func runPipeline(deps *pipeline.Dependencies, stepNames []string, issue *pipeline.Issue, cfg *config.Config) {
-	ctx := context.Background()
+// ExecutePipeline executes the pipeline for a single issue.
+// This function can be called with silent=true to suppress status reporting,
+// useful for batch processing where status updates are not desired.
+func ExecutePipeline(ctx context.Context, issue *pipeline.Issue, cfg *config.Config, deps *pipeline.Dependencies, stepNames []string, silent bool) (*pipeline.Result, error) {
 	pCtx := pipeline.NewContext(ctx, issue, cfg)
 
 	registry := pipeline.NewRegistry()
@@ -54,25 +56,44 @@ func runPipeline(deps *pipeline.Dependencies, stepNames []string, issue *pipelin
 	// Build the actual steps
 	builtSteps, err := registry.BuildFromNames(stepNames, deps)
 	if err != nil {
-		fmt.Printf("❌ [init] Error building steps: %s\n", err.Error())
-		return
+		return nil, fmt.Errorf("error building steps: %w", err)
 	}
 
-	// Wrap steps with status reporting
-	var wrappedSteps []pipeline.Step
-	for _, step := range builtSteps.Steps() {
-		wrappedSteps = append(wrappedSteps, &statusReportingStep{inner: step})
+	var finalSteps []pipeline.Step
+	if silent {
+		// Use steps as-is without status reporting
+		finalSteps = builtSteps.Steps()
+	} else {
+		// Wrap steps with status reporting
+		for _, step := range builtSteps.Steps() {
+			finalSteps = append(finalSteps, &statusReportingStep{inner: step})
+		}
 	}
 
-	finalPipeline := pipeline.New(wrappedSteps...)
+	finalPipeline := pipeline.New(finalSteps...)
 
 	if err := finalPipeline.Run(pCtx); err != nil {
+		// ErrSkipPipeline is not an error, just a graceful exit
+		if err == pipeline.ErrSkipPipeline {
+			return pCtx.Result, nil
+		}
+		return nil, fmt.Errorf("pipeline failed: %w", err)
+	}
+
+	return pCtx.Result, nil
+}
+
+func runPipeline(deps *pipeline.Dependencies, stepNames []string, issue *pipeline.Issue, cfg *config.Config) {
+	ctx := context.Background()
+
+	result, err := ExecutePipeline(ctx, issue, cfg, deps, stepNames, false)
+	if err != nil {
 		fmt.Printf("❌ Pipeline failed: %s\n", err.Error())
 		return
 	}
 
 	// Marshal result to JSON and print it
-	resultBytes, err := json.MarshalIndent(pCtx.Result, "", "  ")
+	resultBytes, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		fmt.Printf("❌ Error marshaling result: %s\n", err.Error())
 		return
