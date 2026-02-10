@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simili Bot - Issue Analyzer</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Simili Bot</h1>
+            <p>Analyze issues against the vector database</p>
+        </header>
+
+        <main>
+            <section class="input-section">
+                <h2>Submit Issue for Analysis</h2>
+                <form id="issueForm">
+                    <div class="form-group">
+                        <label for="title">Issue Title *</label>
+                        <input type="text" id="title" name="title" required
+                               placeholder="e.g., Bug: HTTP connector timeout issue">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="body">Issue Body</label>
+                        <textarea id="body" name="body" rows="6"
+                                  placeholder="Describe the issue in detail..."></textarea>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="org">Organization</label>
+                            <input type="text" id="org" name="org" value="ballerina-platform">
+                        </div>
+                        <div class="form-group">
+                            <label for="repo">Repository</label>
+                            <input type="text" id="repo" name="repo" value="ballerina-library">
+                        </div>
+                    </div>
+
+                    <button type="submit" id="submitBtn">
+                        <span class="btn-text">Analyze Issue</span>
+                        <span class="btn-loading" style="display: none;">Analyzing...</span>
+                    </button>
+                </form>
+            </section>
+
+            <section class="results-section" id="results" style="display: none;">
+                <h2>Analysis Results</h2>
+
+                <!-- Similar Issues -->
+                <div class="result-card" id="similarCard">
+                    <h3>Similar Issues</h3>
+                    <div id="similarIssues"></div>
+                </div>
+
+                <!-- Duplicate Check -->
+                <div class="result-card" id="duplicateCard">
+                    <h3>Duplicate Check</h3>
+                    <div id="duplicateResult"></div>
+                </div>
+
+                <!-- Quality Assessment -->
+                <div class="result-card" id="qualityCard">
+                    <h3>Quality Assessment</h3>
+                    <div id="qualityResult"></div>
+                </div>
+
+                <!-- Suggested Labels -->
+                <div class="result-card" id="labelsCard">
+                    <h3>Suggested Labels</h3>
+                    <div id="labelsResult"></div>
+                </div>
+
+                <!-- Transfer Recommendation -->
+                <div class="result-card" id="transferCard" style="display: none;">
+                    <h3>Transfer Recommendation</h3>
+                    <div id="transferResult"></div>
+                </div>
+            </section>
+
+            <section class="error-section" id="error" style="display: none;">
+                <div class="error-message" id="errorMessage"></div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Powered by <a href="https://github.com/similigh/simili-bot" target="_blank">Simili Bot</a></p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
