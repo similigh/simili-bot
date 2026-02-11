@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <span class="similar-score">${score}%</span>
                     <div class="similar-info">
                         <div class="similar-title">
-                            <a href="${issue.URL}" target="_blank">#${issue.Number}: ${escapeHtml(issue.Title)}</a>
+                            <a href="${sanitizeUrl(issue.URL)}" target="_blank" rel="noopener noreferrer">#${issue.Number}: ${escapeHtml(issue.Title)}</a>
                             <span class="status-badge ${stateClass}">${stateText}</span>
                         </div>
                         <div class="similar-meta">
@@ -222,6 +222,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 ${data.transfer_reason ? `<p class="reason">${escapeHtml(data.transfer_reason)}</p>` : ''}
             </div>
         `;
+    }
+
+    function sanitizeUrl(url) {
+        if (!url) return '#';
+        try {
+            const parsed = new URL(url, window.location.origin);
+            if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+                return parsed.href;
+            }
+        } catch (_) {
+            // Invalid URL
+        }
+        return '#';
     }
 
     function escapeHtml(text) {

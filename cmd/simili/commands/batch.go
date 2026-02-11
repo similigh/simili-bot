@@ -220,8 +220,8 @@ func runBatch(cmd *cobra.Command, args []string) {
 }
 
 // loadIssues reads and parses a JSON file containing an array of issues
-func loadIssues(filepath string) ([]pipeline.Issue, error) {
-	data, err := os.ReadFile(filepath)
+func loadIssues(filePath string) ([]pipeline.Issue, error) {
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}

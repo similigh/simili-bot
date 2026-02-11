@@ -104,7 +104,7 @@ func main() {
 
 	fmt.Printf("\n🚀 Simili Web UI running at http://localhost:%s\n", port)
 	fmt.Printf("   Collection: %s\n", cfg.Qdrant.Collection)
-	fmt.Println("   Press Ctrl+C to stop\n")
+	fmt.Println("   Press Ctrl+C to stop")
 
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
@@ -159,7 +159,9 @@ func initDependencies(cfg *config.Config) (*pipeline.Dependencies, error) {
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+		log.Printf("Failed to encode health response: %v", err)
+	}
 }
 
 func handleAnalyze(w http.ResponseWriter, r *http.Request) {
@@ -180,19 +182,23 @@ func handleAnalyze(w http.ResponseWriter, r *http.Request) {
 
 	var req IssueRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		json.NewEncoder(w).Encode(AnalysisResponse{
+		if encErr := json.NewEncoder(w).Encode(AnalysisResponse{
 			Success: false,
 			Error:   "Invalid JSON: " + err.Error(),
-		})
+		}); encErr != nil {
+			log.Printf("Failed to encode error response: %v", encErr)
+		}
 		return
 	}
 
 	// Validate required fields
 	if req.Title == "" {
-		json.NewEncoder(w).Encode(AnalysisResponse{
+		if err := json.NewEncoder(w).Encode(AnalysisResponse{
 			Success: false,
 			Error:   "Title is required",
-		})
+		}); err != nil {
+			log.Printf("Failed to encode error response: %v", err)
+		}
 		return
 	}
 
@@ -220,15 +226,17 @@ func handleAnalyze(w http.ResponseWriter, r *http.Request) {
 	// Run pipeline
 	result, err := runPipeline(issue)
 	if err != nil {
-		json.NewEncoder(w).Encode(AnalysisResponse{
+		if encErr := json.NewEncoder(w).Encode(AnalysisResponse{
 			Success: false,
 			Error:   "Pipeline error: " + err.Error(),
-		})
+		}); encErr != nil {
+			log.Printf("Failed to encode error response: %v", encErr)
+		}
 		return
 	}
 
 	// Send response
-	json.NewEncoder(w).Encode(AnalysisResponse{
+	if err := json.NewEncoder(w).Encode(AnalysisResponse{
 		Success:         true,
 		SimilarIssues:   result.SimilarFound,
 		IsDuplicate:     result.IsDuplicate,
@@ -239,7 +247,9 @@ func handleAnalyze(w http.ResponseWriter, r *http.Request) {
 		SuggestedLabels: result.SuggestedLabels,
 		TransferTarget:  result.TransferTarget,
 		TransferReason:  result.TransferReason,
-	})
+	}); err != nil {
+		log.Printf("Failed to encode success response: %v", err)
+	}
 }
 
 func runPipeline(issue *pipeline.Issue) (*pipeline.Result, error) {
