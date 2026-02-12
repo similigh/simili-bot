@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/Kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-05
+// Last Modified: 2026-02-12
 
 package gemini
 
@@ -9,16 +9,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
 )
 
-// LLMClient provides LLM-based analysis using Gemini.
+// LLMClient provides LLM-based analysis using Gemini or OpenAI.
 type LLMClient struct {
-	client *genai.Client
-	model  string
+	provider Provider
+	gemini   *genai.Client
+	openAI   *http.Client
+	apiKey   string
+	model    string
 }
 
 // IssueInput represents the issue data needed for analysis.
@@ -129,49 +134,62 @@ type PRDuplicateResult struct {
 	Reasoning   string  `json:"reasoning"`
 }
 
-// NewLLMClient creates a new Gemini LLM client.
+// NewLLMClient creates a new LLM client.
 func NewLLMClient(apiKey string) (*LLMClient, error) {
-	ctx := context.Background()
-	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
+	provider, resolvedKey, err := ResolveProvider(apiKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
+		return nil, err
 	}
 
-	return &LLMClient{
-		client: client,
-		model:  "gemini-2.0-flash-lite", // Fast and cost-effective
-	}, nil
+	client := &LLMClient{
+		provider: provider,
+		apiKey:   resolvedKey,
+	}
+
+	switch provider {
+	case ProviderGemini:
+		ctx := context.Background()
+		geminiClient, err := genai.NewClient(ctx, option.WithAPIKey(resolvedKey))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Gemini client: %w", err)
+		}
+		client.gemini = geminiClient
+		client.model = "gemini-2.0-flash-lite"
+	case ProviderOpenAI:
+		client.openAI = &http.Client{Timeout: 60 * time.Second}
+		client.model = "gpt-5.2"
+	default:
+		return nil, fmt.Errorf("unsupported provider: %s", provider)
+	}
+
+	return client, nil
 }
 
-// Close closes the Gemini client.
+// Close closes underlying provider clients.
 func (l *LLMClient) Close() error {
-	return l.client.Close()
+	if l.gemini != nil {
+		return l.gemini.Close()
+	}
+	return nil
+}
+
+// Provider returns the resolved provider.
+func (l *LLMClient) Provider() string {
+	return string(l.provider)
+}
+
+// Model returns the resolved model.
+func (l *LLMClient) Model() string {
+	return l.model
 }
 
 // AnalyzeIssue performs triage analysis on an issue.
 func (l *LLMClient) AnalyzeIssue(ctx context.Context, issue *IssueInput) (*TriageResult, error) {
 	prompt := buildTriagePromptJSON(issue)
 
-	model := l.client.GenerativeModel(l.model)
-	model.SetTemperature(0.3) // Lower temperature for more consistent results
-	// Request JSON response for structured parsing
-	model.ResponseMIMEType = "application/json"
-
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	responseText, err := l.generateText(ctx, prompt, 0.3, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to analyze issue: %w", err)
-	}
-
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return nil, fmt.Errorf("empty response from LLM")
-	}
-
-	// Extract text from response
-	var responseText string
-	for _, part := range resp.Candidates[0].Content.Parts {
-		if txt, ok := part.(genai.Text); ok {
-			responseText += string(txt)
-		}
 	}
 
 	// Parse JSON response into TriageResult
@@ -190,24 +208,9 @@ func (l *LLMClient) GenerateResponse(ctx context.Context, similar []SimilarIssue
 
 	prompt := buildResponsePrompt(similar)
 
-	model := l.client.GenerativeModel(l.model)
-	model.SetTemperature(0.5) // Slightly higher for more natural language
-
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	responseText, err := l.generateText(ctx, prompt, 0.5, false)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate response: %w", err)
-	}
-
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("empty response from LLM")
-	}
-
-	// Extract text from response
-	var responseText string
-	for _, part := range resp.Candidates[0].Content.Parts {
-		if txt, ok := part.(genai.Text); ok {
-			responseText += string(txt)
-		}
 	}
 
 	return strings.TrimSpace(responseText), nil
@@ -221,30 +224,15 @@ func (l *LLMClient) RouteIssue(ctx context.Context, input *RouteIssueInput) (*Ro
 
 	prompt := buildRouteIssuePrompt(input)
 
-	model := l.client.GenerativeModel(l.model)
-	model.SetTemperature(0.3)
-	model.ResponseMIMEType = "application/json"
-
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	responseText, err := l.generateText(ctx, prompt, 0.3, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to route issue: %w", err)
-	}
-
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return nil, fmt.Errorf("empty response from LLM")
-	}
-
-	var responseText string
-	for _, part := range resp.Candidates[0].Content.Parts {
-		if txt, ok := part.(genai.Text); ok {
-			responseText += string(txt)
-		}
 	}
 
 	var result struct {
 		Rankings []RepositoryRanking `json:"rankings"`
 	}
-	if err := json.Unmarshal([]byte(responseText), &result); err != nil {
+	if err := unmarshalJSONResponse(responseText, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse routing response: %w", err)
 	}
 
@@ -271,28 +259,13 @@ func (l *LLMClient) RouteIssue(ctx context.Context, input *RouteIssueInput) (*Ro
 func (l *LLMClient) AssessQuality(ctx context.Context, issue *IssueInput) (*QualityResult, error) {
 	prompt := buildQualityAssessmentPrompt(issue)
 
-	model := l.client.GenerativeModel(l.model)
-	model.SetTemperature(0.3)
-	model.ResponseMIMEType = "application/json"
-
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	responseText, err := l.generateText(ctx, prompt, 0.3, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to assess quality: %w", err)
 	}
 
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return nil, fmt.Errorf("empty response from LLM")
-	}
-
-	var responseText string
-	for _, part := range resp.Candidates[0].Content.Parts {
-		if txt, ok := part.(genai.Text); ok {
-			responseText += string(txt)
-		}
-	}
-
 	var result QualityResult
-	if err := json.Unmarshal([]byte(responseText), &result); err != nil {
+	if err := unmarshalJSONResponse(responseText, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse quality response: %w", err)
 	}
 
@@ -323,28 +296,13 @@ func (l *LLMClient) DetectDuplicate(ctx context.Context, input *DuplicateCheckIn
 
 	prompt := buildDuplicateDetectionPrompt(input)
 
-	model := l.client.GenerativeModel(l.model)
-	model.SetTemperature(0.3)
-	model.ResponseMIMEType = "application/json"
-
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	responseText, err := l.generateText(ctx, prompt, 0.3, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to detect duplicate: %w", err)
 	}
 
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return nil, fmt.Errorf("empty response from LLM")
-	}
-
-	var responseText string
-	for _, part := range resp.Candidates[0].Content.Parts {
-		if txt, ok := part.(genai.Text); ok {
-			responseText += string(txt)
-		}
-	}
-
 	var result DuplicateResult
-	if err := json.Unmarshal([]byte(responseText), &result); err != nil {
+	if err := unmarshalJSONResponse(responseText, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse duplicate response: %w", err)
 	}
 
@@ -364,28 +322,13 @@ func (l *LLMClient) DetectPRDuplicate(ctx context.Context, input *PRDuplicateChe
 
 	prompt := buildPRDuplicateDetectionPrompt(input)
 
-	model := l.client.GenerativeModel(l.model)
-	model.SetTemperature(0.2)
-	model.ResponseMIMEType = "application/json"
-
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	responseText, err := l.generateText(ctx, prompt, 0.2, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to detect PR duplicate: %w", err)
 	}
 
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return nil, fmt.Errorf("empty response from LLM")
-	}
-
-	var responseText string
-	for _, part := range resp.Candidates[0].Content.Parts {
-		if txt, ok := part.(genai.Text); ok {
-			responseText += string(txt)
-		}
-	}
-
 	var result PRDuplicateResult
-	if err := json.Unmarshal([]byte(responseText), &result); err != nil {
+	if err := unmarshalJSONResponse(responseText, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse PR duplicate response: %w", err)
 	}
 
@@ -396,10 +339,163 @@ func (l *LLMClient) DetectPRDuplicate(ctx context.Context, input *PRDuplicateChe
 	return &result, nil
 }
 
+func (l *LLMClient) generateText(ctx context.Context, prompt string, temperature float32, jsonMode bool) (string, error) {
+	switch l.provider {
+	case ProviderGemini:
+		return l.generateGeminiText(ctx, prompt, temperature, jsonMode)
+	case ProviderOpenAI:
+		return l.generateOpenAIText(ctx, prompt, temperature, jsonMode)
+	default:
+		return "", fmt.Errorf("unsupported provider: %s", l.provider)
+	}
+}
+
+func (l *LLMClient) generateGeminiText(ctx context.Context, prompt string, temperature float32, jsonMode bool) (string, error) {
+	model := l.gemini.GenerativeModel(l.model)
+	model.SetTemperature(temperature)
+	if jsonMode {
+		model.ResponseMIMEType = "application/json"
+	}
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return "", err
+	}
+
+	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+		return "", fmt.Errorf("empty response from LLM")
+	}
+
+	var responseText string
+	for _, part := range resp.Candidates[0].Content.Parts {
+		if txt, ok := part.(genai.Text); ok {
+			responseText += string(txt)
+		}
+	}
+
+	return responseText, nil
+}
+
+func (l *LLMClient) generateOpenAIText(ctx context.Context, prompt string, temperature float32, jsonMode bool) (string, error) {
+	type openAIMessage struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	type openAIResponseFormat struct {
+		Type string `json:"type"`
+	}
+	type openAIRequest struct {
+		Model          string                `json:"model"`
+		Messages       []openAIMessage       `json:"messages"`
+		Temperature    *float32              `json:"temperature,omitempty"`
+		ResponseFormat *openAIResponseFormat `json:"response_format,omitempty"`
+	}
+	type openAIResponse struct {
+		Choices []struct {
+			Message struct {
+				Content interface{} `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+
+	temp := temperature
+	req := openAIRequest{
+		Model:       l.model,
+		Messages:    []openAIMessage{{Role: "user", Content: prompt}},
+		Temperature: &temp,
+	}
+	if jsonMode {
+		req.ResponseFormat = &openAIResponseFormat{Type: "json_object"}
+	}
+
+	var resp openAIResponse
+	if err := callOpenAIJSON(ctx, l.openAI, l.apiKey, "/v1/chat/completions", req, &resp); err != nil {
+		return "", err
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("empty response from LLM")
+	}
+
+	responseText := strings.TrimSpace(extractOpenAIContent(resp.Choices[0].Message.Content))
+	if responseText == "" {
+		return "", fmt.Errorf("empty response from LLM")
+	}
+
+	return responseText, nil
+}
+
+func extractOpenAIContent(content interface{}) string {
+	switch v := content.(type) {
+	case string:
+		return v
+	case []interface{}:
+		var parts []string
+		for _, item := range v {
+			obj, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if text, ok := obj["text"].(string); ok && text != "" {
+				parts = append(parts, text)
+				continue
+			}
+			if nested, ok := obj["content"].(string); ok && nested != "" {
+				parts = append(parts, nested)
+			}
+		}
+		return strings.Join(parts, "\n")
+	case map[string]interface{}:
+		if text, ok := v["text"].(string); ok {
+			return text
+		}
+	}
+	return ""
+}
+
+func unmarshalJSONResponse(response string, out interface{}) error {
+	cleaned := strings.TrimSpace(response)
+	if err := json.Unmarshal([]byte(cleaned), out); err == nil {
+		return nil
+	}
+
+	trimmed := trimCodeFence(cleaned)
+	if err := json.Unmarshal([]byte(trimmed), out); err == nil {
+		return nil
+	}
+
+	objectText := extractJSONObject(trimmed)
+	if objectText != "" {
+		if err := json.Unmarshal([]byte(objectText), out); err == nil {
+			return nil
+		}
+	}
+
+	return json.Unmarshal([]byte(cleaned), out)
+}
+
+func trimCodeFence(text string) string {
+	s := strings.TrimSpace(text)
+	s = strings.TrimPrefix(s, "```json")
+	s = strings.TrimPrefix(s, "```JSON")
+	s = strings.TrimPrefix(s, "```")
+	s = strings.TrimSuffix(s, "```")
+	return strings.TrimSpace(s)
+}
+
+func extractJSONObject(text string) string {
+	first := strings.IndexAny(text, "{[")
+	lastObj := strings.LastIndexAny(text, "}]")
+	if first >= 0 && lastObj > first {
+		return strings.TrimSpace(text[first : lastObj+1])
+	}
+	return ""
+}
+
 // parseTriageResponseJSON parses the JSON LLM response into a TriageResult.
 func parseTriageResponseJSON(response string) (*TriageResult, error) {
 	var result TriageResult
-	if err := json.Unmarshal([]byte(response), &result); err != nil {
+	if err := unmarshalJSONResponse(response, &result); err != nil {
 		// If JSON parsing fails, fall back to legacy string parsing
 		return parseTriageResponseLegacy(response), nil
 	}

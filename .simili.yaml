@@ -7,7 +7,7 @@ embedding:
   provider: gemini
   api_key: ${GEMINI_API_KEY}
   model: gemini-embedding-001
-  dimensions: 3072
+  dimensions: 1536
 defaults:
   similarity_threshold: 0.7
   max_similar_to_show: 5

@@ -246,24 +246,14 @@ func runProcess() {
 
 	// Initialize clients with error logging
 	// Embedder
-	geminiKey := cfg.Embedding.APIKey
-	if geminiKey == "" {
-		geminiKey = os.Getenv("GEMINI_API_KEY")
-	}
-
-	if geminiKey != "" {
-		// Use configured model or default (passed as empty string)
-		embedder, err := gemini.NewEmbedder(geminiKey, cfg.Embedding.Model)
-		if err == nil {
-			deps.Embedder = embedder
-			if verbose {
-				fmt.Printf("Initialized Gemini Embedder with model: %s\n", cfg.Embedding.Model)
-			}
-		} else {
-			fmt.Printf("Warning: Failed to initialize Gemini embedder: %v\n", err)
+	embedder, err := gemini.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
+	if err == nil {
+		deps.Embedder = embedder
+		if verbose {
+			fmt.Printf("Initialized Embedder (%s) with model: %s\n", embedder.Provider(), embedder.Model())
 		}
 	} else {
-		fmt.Println("Warning: No Gemini API Key found in config or GEMINI_API_KEY env var")
+		fmt.Printf("Warning: Failed to initialize embedder: %v\n", err)
 	}
 
 	// Vector Store
@@ -306,14 +296,14 @@ func runProcess() {
 	}
 
 	// LLM Client
-	// Re-use geminiKey resolved above
-	if geminiKey != "" {
-		llm, err := gemini.NewLLMClient(geminiKey)
-		if err == nil {
-			deps.LLMClient = llm
-		} else {
-			fmt.Printf("Warning: Failed to initialize Gemini LLM client: %v\n", err)
+	llm, err := gemini.NewLLMClient(cfg.Embedding.APIKey)
+	if err == nil {
+		deps.LLMClient = llm
+		if verbose {
+			fmt.Printf("Initialized LLM Client (%s) with model: %s\n", llm.Provider(), llm.Model())
 		}
+	} else {
+		fmt.Printf("Warning: Failed to initialize LLM client: %v\n", err)
 	}
 
 	defer deps.Close()

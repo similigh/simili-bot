@@ -27,15 +27,15 @@ import (
 )
 
 var (
-	batchFile              string
-	batchOutFile           string
-	batchFormat            string
-	batchWorkers           int
-	batchWorkflow          string
-	batchCollection        string
-	batchThreshold         float64
-	batchDuplicateThresh   float64
-	batchTopK              int
+	batchFile            string
+	batchOutFile         string
+	batchFormat          string
+	batchWorkers         int
+	batchWorkflow        string
+	batchCollection      string
+	batchThreshold       float64
+	batchDuplicateThresh float64
+	batchTopK            int
 )
 
 // BatchJob represents a job to process in the worker pool
@@ -280,22 +280,14 @@ func applyConfigOverrides(cfg *config.Config) {
 func initializeDependencies(cfg *config.Config) (*pipeline.Dependencies, error) {
 	deps := &pipeline.Dependencies{}
 
-	// Initialize Gemini Embedder
-	geminiKey := cfg.Embedding.APIKey
-	if geminiKey == "" {
-		geminiKey = os.Getenv("GEMINI_API_KEY")
-	}
-	if geminiKey == "" {
-		return nil, fmt.Errorf("GEMINI_API_KEY is required (set via environment or config file)")
-	}
-
-	embedder, err := gemini.NewEmbedder(geminiKey, cfg.Embedding.Model)
+	// Initialize Embedder (Gemini/OpenAI auto-selected by available keys)
+	embedder, err := gemini.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize Gemini embedder: %w", err)
+		return nil, fmt.Errorf("failed to initialize embedder: %w", err)
 	}
 	deps.Embedder = embedder
 	if verbose {
-		fmt.Printf("✓ Initialized Gemini Embedder with model: %s\n", cfg.Embedding.Model)
+		fmt.Printf("✓ Initialized Embedder (%s) with model: %s\n", embedder.Provider(), embedder.Model())
 	}
 
 	// Initialize Qdrant Client
@@ -338,15 +330,13 @@ func initializeDependencies(cfg *config.Config) (*pipeline.Dependencies, error) 
 	}
 
 	// Initialize LLM Client
-	if geminiKey != "" {
-		llm, err := gemini.NewLLMClient(geminiKey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize Gemini LLM client: %w", err)
-		}
-		deps.LLMClient = llm
-		if verbose {
-			fmt.Println("✓ Initialized Gemini LLM client")
-		}
+	llm, err := gemini.NewLLMClient(cfg.Embedding.APIKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize LLM client: %w", err)
+	}
+	deps.LLMClient = llm
+	if verbose {
+		fmt.Printf("✓ Initialized LLM client (%s) with model: %s\n", llm.Provider(), llm.Model())
 	}
 
 	return deps, nil
