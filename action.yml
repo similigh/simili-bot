@@ -1,5 +1,5 @@
-name: 'Simili - Issue Intelligence'
-description: 'AI-powered duplicate detection and similar issue finder with cross-repo search.'
+name: 'Simili - Issue & PR Intelligence'
+description: 'AI-powered duplicate detection and similar issue/PR finder with cross-repo search.'
 author: 'Kavirubc'
 branding:
   icon: 'search'

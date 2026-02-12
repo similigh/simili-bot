@@ -50,8 +50,8 @@ type PendingAction struct {
 
 // Run executes the scheduler logic.
 func (s *PendingActionScheduler) Run(ctx *pipeline.Context) error {
-	// Check if there was a transfer target that wasn't executed
-	if ctx.TransferTarget != "" && !ctx.Result.Transferred {
+	// Check if there was a transfer target that wasn't executed (issues only)
+	if ctx.TransferTarget != "" && !ctx.Result.Transferred && ctx.Issue.EventType != "pull_request" {
 		log.Printf("[pending_action_scheduler] Scheduling pending transfer for issue #%d to %s", ctx.Issue.Number, ctx.TransferTarget)
 
 		action := PendingAction{

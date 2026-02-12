@@ -34,7 +34,7 @@ Navigate to your Organization Settings > Secrets and variables > Actions. Add th
 
 ## Step 3: Configure Repositories
 
-For each repository where you want to enable Simili-Bot, add a workflow file (e.g., `.github/workflows/issue-triage.yml`) that calls the shared workflow.
+For each repository where you want to enable Simili-Bot, add a workflow file (e.g., `.github/workflows/issue-pr-triage.yml`) that calls the shared workflow.
 
 [View Example Caller Workflow](./examples/multi-repo/caller-workflow.yml)
 
@@ -54,5 +54,5 @@ defaults:
 ## Cross-Repository features
 
 When configured correctly, Simili-Bot enables:
-- **Duplicate Detection**: Identifying if a new issue is a duplicate of an existing issue in *any* of the organization's repositories.
-- **Unified Labeling**: Applying consistent labels across the organization.
+- **Duplicate Detection**: Identifying if a new issue/PR is a duplicate of an existing thread in *any* of the organization's repositories.
+- **Unified Labeling**: Applying consistent labels across issues and pull requests.

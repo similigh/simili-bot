@@ -1,14 +1,17 @@
-name: Simili Issue Triage
+name: Simili Issue & PR Triage
 
 on:
   issues:
-    types: [opened, edited, closed, reopened, deleted]
+    types: [opened, edited, reopened]
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
 
 jobs:
   process:
     runs-on: ubuntu-latest
     permissions:
       issues: write
+      pull-requests: write
       contents: read
 
     steps:

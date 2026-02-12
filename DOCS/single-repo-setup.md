@@ -24,7 +24,7 @@ Create a file named `.github/simili.yaml` in your repository root.
 
 ## Step 3: Create Workflow
 
-Create a GitHub Actions workflow file (e.g., `.github/workflows/simili.yml`) to trigger the bot on issue events.
+Create a GitHub Actions workflow file (e.g., `.github/workflows/simili.yml`) to trigger the bot on issue and pull request events.
 
 [View Example Workflow](./examples/single-repo/workflow.yml)
 

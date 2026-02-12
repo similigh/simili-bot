@@ -128,66 +128,7 @@ func runProcess() {
 		if issue.Number == 0 || issue.EventType == "" {
 			var raw map[string]interface{}
 			if err := json.Unmarshal(data, &raw); err == nil {
-				// Handle issue comments
-				if comm, ok := raw["comment"].(map[string]interface{}); ok {
-					issue.EventType = "issue_comment"
-					if body, ok := comm["body"].(string); ok {
-						issue.CommentBody = body
-					}
-					if user, ok := comm["user"].(map[string]interface{}); ok {
-						if login, ok := user["login"].(string); ok {
-							issue.CommentAuthor = login
-						}
-					}
-				}
-
-				// Handle issues
-				if iss, ok := raw["issue"].(map[string]interface{}); ok {
-					if issue.EventType == "" {
-						issue.EventType = "issues"
-					}
-					if num, ok := iss["number"].(float64); ok {
-						issue.Number = int(num)
-					}
-					if title, ok := iss["title"].(string); ok {
-						issue.Title = title
-					}
-					if body, ok := iss["body"].(string); ok {
-						issue.Body = body
-					}
-					if user, ok := iss["user"].(map[string]interface{}); ok {
-						if login, ok := user["login"].(string); ok {
-							issue.Author = login
-						}
-					}
-					if createdAt, ok := iss["created_at"].(string); ok {
-						if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
-							issue.CreatedAt = t
-						}
-					}
-				}
-
-				// Handle repository
-				if repo, ok := raw["repository"].(map[string]interface{}); ok {
-					if owner, ok := repo["owner"].(map[string]interface{}); ok {
-						if login, ok := owner["login"].(string); ok {
-							issue.Org = login
-						}
-					}
-					if name, ok := repo["name"].(string); ok {
-						issue.Repo = name
-					}
-				}
-
-				// Fallback event name from GitHub environment if possible
-				if issue.EventType == "" {
-					issue.EventType = os.Getenv("GITHUB_EVENT_NAME")
-				}
-
-				// Handle event action if provided
-				if action, ok := raw["action"].(string); ok {
-					issue.EventAction = action
-				}
+				enrichIssueFromGitHubEvent(&issue, raw)
 			}
 		}
 	} else {
@@ -322,4 +263,91 @@ func runProcess() {
 	fmt.Println("[Simili-Bot] Starting pipeline...")
 	runPipeline(deps, stepNames, &issue, cfg)
 	fmt.Println("[Simili-Bot] Pipeline completed")
+}
+
+func enrichIssueFromGitHubEvent(issue *pipeline.Issue, raw map[string]interface{}) {
+	if action, ok := raw["action"].(string); ok {
+		issue.EventAction = action
+	}
+
+	if comm, ok := raw["comment"].(map[string]interface{}); ok {
+		issue.EventType = "issue_comment"
+		if body, ok := comm["body"].(string); ok {
+			issue.CommentBody = body
+		}
+		if user, ok := comm["user"].(map[string]interface{}); ok {
+			if login, ok := user["login"].(string); ok {
+				issue.CommentAuthor = login
+			}
+		}
+	}
+
+	if iss, ok := raw["issue"].(map[string]interface{}); ok {
+		populateIssuePayload(issue, iss)
+		if issue.EventType == "" {
+			issue.EventType = "issues"
+		}
+	}
+
+	if pr, ok := raw["pull_request"].(map[string]interface{}); ok {
+		populateIssuePayload(issue, pr)
+		issue.EventType = "pull_request"
+	}
+
+	if repo, ok := raw["repository"].(map[string]interface{}); ok {
+		if owner, ok := repo["owner"].(map[string]interface{}); ok {
+			if login, ok := owner["login"].(string); ok {
+				issue.Org = login
+			}
+		}
+		if name, ok := repo["name"].(string); ok {
+			issue.Repo = name
+		}
+	}
+
+	if issue.EventType == "" {
+		issue.EventType = os.Getenv("GITHUB_EVENT_NAME")
+	}
+}
+
+func populateIssuePayload(issue *pipeline.Issue, payload map[string]interface{}) {
+	if num, ok := payload["number"].(float64); ok {
+		issue.Number = int(num)
+	}
+	if title, ok := payload["title"].(string); ok {
+		issue.Title = title
+	}
+	if body, ok := payload["body"].(string); ok {
+		issue.Body = body
+	}
+	if state, ok := payload["state"].(string); ok {
+		issue.State = state
+	}
+	if htmlURL, ok := payload["html_url"].(string); ok {
+		issue.URL = htmlURL
+	}
+	if user, ok := payload["user"].(map[string]interface{}); ok {
+		if login, ok := user["login"].(string); ok {
+			issue.Author = login
+		}
+	}
+	if createdAt, ok := payload["created_at"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
+			issue.CreatedAt = t
+		}
+	}
+
+	if labels, ok := payload["labels"].([]interface{}); ok {
+		parsed := make([]string, 0, len(labels))
+		for _, label := range labels {
+			if l, ok := label.(map[string]interface{}); ok {
+				if name, ok := l["name"].(string); ok {
+					parsed = append(parsed, name)
+				}
+			}
+		}
+		if len(parsed) > 0 {
+			issue.Labels = parsed
+		}
+	}
 }

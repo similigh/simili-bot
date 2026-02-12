@@ -63,8 +63,8 @@ func (s *CommandHandler) Run(ctx *pipeline.Context) error {
 		return pipeline.ErrSkipPipeline
 	}
 
-	// For standard issue events, check history for undo commands to prevent loops
-	if ctx.Issue.EventType == "issues" {
+	// For standard issue/PR events, check history for undo commands to prevent loops
+	if ctx.Issue.EventType == "issues" || ctx.Issue.EventType == "pull_request" {
 		return s.analyzeHistoryForLoops(ctx)
 	}
 
