@@ -20,7 +20,8 @@ This web application provides a user-friendly interface to test issue analysis w
 
 - **Go 1.21+**
 - **Environment Variables**:
-  - `GEMINI_API_KEY`: Required for embeddings and LLM analysis
+  - `GEMINI_API_KEY`: Optional AI key (preferred if both keys are set)
+  - `OPENAI_API_KEY`: Optional AI key (used when Gemini key is not set)
   - `QDRANT_URL`: Vector database URL (e.g., `https://xxx.qdrant.io:6334`)
   - `QDRANT_API_KEY`: Qdrant authentication key
   - `QDRANT_COLLECTION`: Collection name (e.g., `ballerina-issues`)
@@ -39,6 +40,7 @@ go build -o simili-web .
 
 ```bash
 export GEMINI_API_KEY="your-gemini-api-key"
+# or export OPENAI_API_KEY="your-openai-api-key"
 export QDRANT_URL="https://your-qdrant-instance.qdrant.io:6334"
 export QDRANT_API_KEY="your-qdrant-api-key"
 export QDRANT_COLLECTION="ballerina-issues"
@@ -149,10 +151,10 @@ qdrant:
   collection: ballerina-issues
 
 embedding:
-  provider: gemini
-  api_key: ${GEMINI_API_KEY}
-  model: gemini-embedding-001
-  dimensions: 768
+  provider: gemini # or openai
+  api_key: ${GEMINI_API_KEY} # or ${OPENAI_API_KEY}
+  model: text-embedding-004 # or text-embedding-3-small
+  dimensions: 768 # use 1536 for text-embedding-3-small
 
 defaults:
   similarity_threshold: 0.75
@@ -196,8 +198,8 @@ curl -X POST http://localhost:8080/api/analyze \
 
 ## Troubleshooting
 
-### "GEMINI_API_KEY is required"
-Set the environment variable before running the server.
+### "No AI API key found"
+Set either `GEMINI_API_KEY` or `OPENAI_API_KEY` before running the server.
 
 ### "Failed to connect to Qdrant"
 - Check `QDRANT_URL` format (include `https://` and port `:6334`)

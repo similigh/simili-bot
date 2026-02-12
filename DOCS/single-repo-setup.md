@@ -5,16 +5,21 @@ This guide details the steps to integrate Simili-Bot into a standalone repositor
 ## Prerequisites
 
 - Access to the repository with permissions to manage workflows and secrets.
-- A **Google Gemini API Key** for embedding generation.
+- At least one AI provider key:
+  - **Google Gemini API Key** (`GEMINI_API_KEY`)
+  - **OpenAI API Key** (`OPENAI_API_KEY`)
 - A **Qdrant** instance (Cloud or self-hosted) for vector storage.
 
 ## Step 1: Configure Secrets
 
 Navigate to **Settings > Secrets and variables > Actions** in your repository and add the following secrets:
 
-- `GEMINI_API_KEY`
+- `GEMINI_API_KEY` (optional, preferred if both keys are set)
+- `OPENAI_API_KEY` (optional, used when Gemini key is not set)
 - `QDRANT_URL`
 - `QDRANT_API_KEY`
+
+You must set at least one of `GEMINI_API_KEY` or `OPENAI_API_KEY`.
 
 ## Step 2: Add Configuration
 
