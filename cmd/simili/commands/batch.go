@@ -280,22 +280,14 @@ func applyConfigOverrides(cfg *config.Config) {
 func initializeDependencies(cfg *config.Config) (*pipeline.Dependencies, error) {
 	deps := &pipeline.Dependencies{}
 
-	// Initialize Gemini Embedder
-	geminiKey := cfg.Embedding.APIKey
-	if geminiKey == "" {
-		geminiKey = os.Getenv("GEMINI_API_KEY")
-	}
-	if geminiKey == "" {
-		return nil, fmt.Errorf("GEMINI_API_KEY is required (set via environment or config file)")
-	}
-
-	embedder, err := gemini.NewEmbedder(geminiKey, cfg.Embedding.Model)
+	// Initialize Embedder (Gemini/OpenAI auto-selected by available keys)
+	embedder, err := gemini.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize Gemini embedder: %w", err)
+		return nil, fmt.Errorf("failed to initialize embedder: %w", err)
 	}
 	deps.Embedder = embedder
 	if verbose {
-		fmt.Printf("✓ Initialized Gemini Embedder with model: %s\n", cfg.Embedding.Model)
+		fmt.Printf("✓ Initialized Embedder (%s) with model: %s\n", embedder.Provider(), embedder.Model())
 	}
 
 	// Initialize Qdrant Client
@@ -337,24 +329,22 @@ func initializeDependencies(cfg *config.Config) (*pipeline.Dependencies, error) 
 		fmt.Println("ℹ No GitHub token found (some steps may be limited)")
 	}
 
-	// Initialize LLM Client
+	// Initialize LLM Client (Gemini/OpenAI auto-selected by available keys)
 	llmKey := cfg.LLM.APIKey
 	if llmKey == "" {
-		llmKey = geminiKey // fall back to embedding key
+		llmKey = cfg.Embedding.APIKey
 	}
 	llmModel := cfg.LLM.Model
 	if envModel := os.Getenv("LLM_MODEL"); envModel != "" {
 		llmModel = envModel
 	}
-	if llmKey != "" {
-		llm, err := gemini.NewLLMClient(llmKey, llmModel)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize Gemini LLM client: %w", err)
-		}
-		deps.LLMClient = llm
-		if verbose {
-			fmt.Printf("✓ Initialized Gemini LLM client with model: %s\n", llmModel)
-		}
+	llm, err := gemini.NewLLMClient(llmKey, llmModel)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize LLM client: %w", err)
+	}
+	deps.LLMClient = llm
+	if verbose {
+		fmt.Printf("✓ Initialized LLM client (%s) with model: %s\n", llm.Provider(), llm.Model())
 	}
 
 	return deps, nil

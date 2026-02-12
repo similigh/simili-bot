@@ -61,14 +61,13 @@ type prDuplicateRunOptions struct {
 	TopK         int
 	Threshold    float64
 	PRCollection string
-	GeminiKey    string
 }
 
 var prDuplicateCmd = &cobra.Command{
 	Use:   "pr-duplicate",
 	Short: "Check whether a PR is a duplicate of existing issues/PRs",
 	Long: `Analyze a pull request for duplicate intent by searching both the issue
-collection and PR collection, then using Gemini to make a duplicate decision.`,
+collection and PR collection, then using LLM analysis for a duplicate decision.`,
 	Run: runPRDuplicate,
 }
 
@@ -109,7 +108,7 @@ func runPRDuplicate(cmd *cobra.Command, args []string) {
 		log.Fatalf("Failed to fetch pull request metadata: %v", err)
 	}
 
-	embedding, err := generateEmbeddingForPRText(ctx, cfg, opts.GeminiKey, prText)
+	embedding, err := generateEmbeddingForPRText(ctx, cfg, prText)
 	if err != nil {
 		log.Fatalf("Failed to embed pull request content: %v", err)
 	}
@@ -122,7 +121,7 @@ func runPRDuplicate(cmd *cobra.Command, args []string) {
 		fmt.Printf("Warning: PR collection '%s' does not exist; searching issues only.\n\n", opts.PRCollection)
 	}
 
-	duplicateResult, matched, err := detectPRDuplicate(ctx, opts.GeminiKey, pr, candidates)
+	duplicateResult, matched, err := detectPRDuplicate(ctx, cfg.Embedding.APIKey, pr, candidates)
 	if err != nil {
 		log.Fatalf("Failed to run duplicate analysis: %v", err)
 	}
@@ -169,14 +168,6 @@ func resolvePRDuplicateRunOptions(cfg *config.Config) (*prDuplicateRunOptions, e
 		topK = 8
 	}
 
-	geminiKey := strings.TrimSpace(cfg.Embedding.APIKey)
-	if geminiKey == "" {
-		geminiKey = strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
-	}
-	if geminiKey == "" {
-		return nil, fmt.Errorf("Gemini API key is required (set embedding.api_key or GEMINI_API_KEY)")
-	}
-
 	return &prDuplicateRunOptions{
 		Token:        token,
 		Org:          strings.TrimSpace(parts[0]),
@@ -185,7 +176,6 @@ func resolvePRDuplicateRunOptions(cfg *config.Config) (*prDuplicateRunOptions, e
 		TopK:         topK,
 		Threshold:    threshold,
 		PRCollection: resolvePRCollection(cfg, prDuplicatePRCollection),
-		GeminiKey:    geminiKey,
 	}, nil
 }
 
@@ -205,10 +195,10 @@ func fetchPullRequestMetadataText(ctx context.Context, opts *prDuplicateRunOptio
 	return pr, buildPRMetadataText(pr, filePaths), nil
 }
 
-func generateEmbeddingForPRText(ctx context.Context, cfg *config.Config, geminiKey, prText string) ([]float32, error) {
-	embedder, err := gemini.NewEmbedder(geminiKey, cfg.Embedding.Model)
+func generateEmbeddingForPRText(ctx context.Context, cfg *config.Config, prText string) ([]float32, error) {
+	embedder, err := gemini.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
 	if err != nil {
-		return nil, fmt.Errorf("initialize Gemini embedder: %w", err)
+		return nil, fmt.Errorf("initialize embedder: %w", err)
 	}
 	defer embedder.Close()
 
@@ -269,14 +259,14 @@ func findPRDuplicateCandidates(ctx context.Context, cfg *config.Config, opts *pr
 	return candidates, prCollectionMissing, nil
 }
 
-func detectPRDuplicate(ctx context.Context, geminiKey string, pr *github.PullRequest, candidates []prDuplicateCandidate) (*gemini.PRDuplicateResult, *prDuplicateCandidate, error) {
+func detectPRDuplicate(ctx context.Context, apiKey string, pr *github.PullRequest, candidates []prDuplicateCandidate) (*gemini.PRDuplicateResult, *prDuplicateCandidate, error) {
 	if len(candidates) == 0 {
 		return nil, nil, nil
 	}
 
-	llmClient, err := gemini.NewLLMClient(geminiKey)
+	llmClient, err := gemini.NewLLMClient(apiKey)
 	if err != nil {
-		return nil, nil, fmt.Errorf("initialize Gemini LLM client: %w", err)
+		return nil, nil, fmt.Errorf("initialize LLM client: %w", err)
 	}
 	defer llmClient.Close()
 

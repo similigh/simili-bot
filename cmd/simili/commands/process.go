@@ -187,24 +187,14 @@ func runProcess() {
 
 	// Initialize clients with error logging
 	// Embedder
-	geminiKey := cfg.Embedding.APIKey
-	if geminiKey == "" {
-		geminiKey = os.Getenv("GEMINI_API_KEY")
-	}
-
-	if geminiKey != "" {
-		// Use configured model or default (passed as empty string)
-		embedder, err := gemini.NewEmbedder(geminiKey, cfg.Embedding.Model)
-		if err == nil {
-			deps.Embedder = embedder
-			if verbose {
-				fmt.Printf("Initialized Gemini Embedder with model: %s\n", cfg.Embedding.Model)
-			}
-		} else {
-			fmt.Printf("Warning: Failed to initialize Gemini embedder: %v\n", err)
+	embedder, err := gemini.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
+	if err == nil {
+		deps.Embedder = embedder
+		if verbose {
+			fmt.Printf("Initialized Embedder (%s) with model: %s\n", embedder.Provider(), embedder.Model())
 		}
 	} else {
-		fmt.Println("Warning: No Gemini API Key found in config or GEMINI_API_KEY env var")
+		fmt.Printf("Warning: Failed to initialize embedder: %v\n", err)
 	}
 
 	// Vector Store
@@ -246,25 +236,23 @@ func runProcess() {
 		deps.GitHub = ghClient
 	}
 
-	// LLM Client
+	// LLM Client (Gemini/OpenAI auto-selected by available keys)
 	llmKey := cfg.LLM.APIKey
 	if llmKey == "" {
-		llmKey = geminiKey // fall back to embedding key
+		llmKey = cfg.Embedding.APIKey
 	}
 	llmModel := cfg.LLM.Model
 	if envModel := os.Getenv("LLM_MODEL"); envModel != "" {
 		llmModel = envModel
 	}
-	if llmKey != "" {
-		llm, err := gemini.NewLLMClient(llmKey, llmModel)
-		if err == nil {
-			deps.LLMClient = llm
-			if verbose {
-				fmt.Printf("Initialized Gemini LLM client with model: %s\n", llmModel)
-			}
-		} else {
-			fmt.Printf("Warning: Failed to initialize Gemini LLM client: %v\n", err)
+	llm, err := gemini.NewLLMClient(llmKey, llmModel)
+	if err == nil {
+		deps.LLMClient = llm
+		if verbose {
+			fmt.Printf("Initialized LLM Client (%s) with model: %s\n", llm.Provider(), llm.Model())
 		}
+	} else {
+		fmt.Printf("Warning: Failed to initialize LLM client: %v\n", err)
 	}
 
 	defer deps.Close()
