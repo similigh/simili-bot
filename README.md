@@ -84,12 +84,36 @@ Bulk index issues from a GitHub repository into the vector database.
 simili index --repo owner/repo --workers 5 --limit 100
 ```
 
+Optionally index pull requests (metadata-only) into a separate PR collection.
+
+```bash
+simili index --repo owner/repo --workers 5 --include-prs
+```
+
 **Flags:**
 - `--repo` (required): Target repository (owner/name)
 - `--workers`: Number of concurrent workers (default: 5)
-- `--since`: Start from issue number or timestamp
-- `--limit`: Maximum issues to index
+- `--since`: RFC3339 timestamp filter (uses GitHub `updated_at`)
 - `--dry-run`: Simulate without writing to database
+- `--include-prs`: Also index pull requests (metadata-only)
+- `--pr-collection`: Override PR collection name (default: `qdrant.pr_collection` or `QDRANT_PR_COLLECTION`)
+
+### `simili pr-duplicate`
+
+Check whether a pull request appears to be a duplicate of existing issues or pull requests.
+This command searches both the issue collection and PR collection, then runs an LLM duplicate decision.
+
+```bash
+simili pr-duplicate --repo owner/repo --number 123 --top-k 8
+```
+
+**Flags:**
+- `--repo` (required): Target repository (owner/name)
+- `--number` (required): Pull request number
+- `--top-k`: Maximum combined candidates to evaluate (default: 8)
+- `--threshold`: Similarity threshold override
+- `--pr-collection`: Override PR collection name
+- `--json`: Emit JSON output only
 
 ### `simili process`
 
@@ -161,11 +185,17 @@ Create a JSON file with an array of issues:
 # 1. Index repository issues
 simili index --repo ballerina-platform/ballerina-library --workers 10
 
-# 2. Prepare test issues in batch.json
-# 3. Run batch analysis
+# 2. Index PRs into separate collection
+simili index --repo ballerina-platform/ballerina-library --workers 10 --include-prs
+
+# 3. Check if a PR duplicates prior issues/PRs
+simili pr-duplicate --repo ballerina-platform/ballerina-library --number 123 --top-k 10
+
+# 4. Prepare test issues in batch.json
+# 5. Run batch analysis
 simili batch --file batch.json --format csv --out-file analysis.csv --workers 5
 
-# 4. Review results
+# 6. Review results
 cat analysis.csv
 ```
 

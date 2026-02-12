@@ -29,6 +29,16 @@ func (c *Client) GetIssue(ctx context.Context, org, repo string, number int) (*g
 	return issue, nil
 }
 
+// GetPullRequest fetches pull request details.
+func (c *Client) GetPullRequest(ctx context.Context, org, repo string, number int) (*github.PullRequest, error) {
+	pr, _, err := c.client.PullRequests.Get(ctx, org, repo, number)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch pull request: %w", err)
+	}
+
+	return pr, nil
+}
+
 // CreateComment posts a comment on an issue.
 func (c *Client) CreateComment(ctx context.Context, org, repo string, number int, body string) error {
 	if strings.TrimSpace(body) == "" {
@@ -119,6 +129,22 @@ func (c *Client) ListIssues(ctx context.Context, org, repo string, opts *github.
 	return issues, resp, nil
 }
 
+// ListPullRequests fetches a list of pull requests from the repository.
+func (c *Client) ListPullRequests(ctx context.Context, org, repo string, opts *github.PullRequestListOptions) ([]*github.PullRequest, *github.Response, error) {
+	if opts == nil {
+		opts = &github.PullRequestListOptions{
+			State: "all",
+		}
+	}
+
+	prs, resp, err := c.client.PullRequests.List(ctx, org, repo, opts)
+	if err != nil {
+		return nil, resp, fmt.Errorf("failed to list pull requests for %s/%s: %w", org, repo, err)
+	}
+
+	return prs, resp, nil
+}
+
 // ListComments fetches comments for a specific issue.
 func (c *Client) ListComments(ctx context.Context, org, repo string, number int, opts *github.IssueListCommentsOptions) ([]*github.IssueComment, *github.Response, error) {
 	comments, resp, err := c.client.Issues.ListComments(ctx, org, repo, number, opts)
@@ -126,6 +152,20 @@ func (c *Client) ListComments(ctx context.Context, org, repo string, number int,
 		return nil, resp, fmt.Errorf("failed to list comments for issue #%d in %s/%s: %w", number, org, repo, err)
 	}
 	return comments, resp, nil
+}
+
+// ListPullRequestFiles fetches files changed in a pull request.
+func (c *Client) ListPullRequestFiles(ctx context.Context, org, repo string, number int, opts *github.ListOptions) ([]*github.CommitFile, *github.Response, error) {
+	if opts == nil {
+		opts = &github.ListOptions{PerPage: 100}
+	}
+
+	files, resp, err := c.client.PullRequests.ListFiles(ctx, org, repo, number, opts)
+	if err != nil {
+		return nil, resp, fmt.Errorf("failed to list files for pull request #%d in %s/%s: %w", number, org, repo, err)
+	}
+
+	return files, resp, nil
 }
 
 // GetFileContent fetches the raw content of a file from a repository.

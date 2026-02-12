@@ -2,11 +2,12 @@ qdrant:
   url: ${QDRANT_URL}
   api_key: ${QDRANT_API_KEY}
   collection: ${QDRANT_COLLECTION}
+  pr_collection: ${QDRANT_PR_COLLECTION}
 embedding:
   provider: gemini
   api_key: ${GEMINI_API_KEY}
   model: gemini-embedding-001
-  dimensions: 768
+  dimensions: 3072
 llm:
   provider: gemini
   api_key: ${GEMINI_API_KEY}
