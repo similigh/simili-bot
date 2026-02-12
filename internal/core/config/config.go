@@ -44,9 +44,10 @@ type Config struct {
 
 // QdrantConfig holds Qdrant connection settings.
 type QdrantConfig struct {
-	URL        string `yaml:"url"`
-	APIKey     string `yaml:"api_key"`
-	Collection string `yaml:"collection"`
+	URL          string `yaml:"url"`
+	APIKey       string `yaml:"api_key"`
+	Collection   string `yaml:"collection"`
+	PRCollection string `yaml:"pr_collection,omitempty"`
 }
 
 // EmbeddingConfig holds embedding provider settings.
@@ -228,6 +229,13 @@ func (c *Config) applyDefaults() {
 	if c.Transfer.RepoCollection == "" {
 		c.Transfer.RepoCollection = "simili_repos"
 	}
+	if c.Qdrant.PRCollection == "" {
+		if c.Qdrant.Collection != "" {
+			c.Qdrant.PRCollection = c.Qdrant.Collection + "_prs"
+		} else {
+			c.Qdrant.PRCollection = "simili_prs"
+		}
+	}
 }
 
 // mergeConfigs merges a child config onto a parent config.
@@ -252,6 +260,9 @@ func mergeConfigs(parent, child *Config) *Config {
 	}
 	if child.Qdrant.Collection != "" {
 		result.Qdrant.Collection = child.Qdrant.Collection
+	}
+	if child.Qdrant.PRCollection != "" {
+		result.Qdrant.PRCollection = child.Qdrant.PRCollection
 	}
 
 	// Embedding: override if any field is set

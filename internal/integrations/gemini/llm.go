@@ -101,6 +101,34 @@ type DuplicateResult struct {
 	SimilarIssues json.RawMessage `json:"similar_issues"` // Flexible: can be []int or []object
 }
 
+// PRDuplicateCandidateInput represents an issue/PR candidate for PR duplicate checking.
+type PRDuplicateCandidateInput struct {
+	ID         string
+	EntityType string // "issue" or "pull_request"
+	Org        string
+	Repo       string
+	Number     int
+	Title      string
+	Body       string
+	URL        string
+	Similarity float64
+	State      string
+}
+
+// PRDuplicateCheckInput represents input for PR duplicate detection.
+type PRDuplicateCheckInput struct {
+	PullRequest *IssueInput
+	Candidates  []PRDuplicateCandidateInput
+}
+
+// PRDuplicateResult holds duplicate detection result for pull requests.
+type PRDuplicateResult struct {
+	IsDuplicate bool    `json:"is_duplicate"`
+	DuplicateID string  `json:"duplicate_id"` // Candidate ID, e.g. issue:org/repo#123
+	Confidence  float64 `json:"confidence"`   // 0.0-1.0
+	Reasoning   string  `json:"reasoning"`
+}
+
 // NewLLMClient creates a new Gemini LLM client.
 func NewLLMClient(apiKey string) (*LLMClient, error) {
 	ctx := context.Background()
@@ -323,6 +351,46 @@ func (l *LLMClient) DetectDuplicate(ctx context.Context, input *DuplicateCheckIn
 	// Ensure non-nil SimilarIssues
 	if result.SimilarIssues == nil {
 		result.SimilarIssues = json.RawMessage("[]")
+	}
+
+	return &result, nil
+}
+
+// DetectPRDuplicate analyzes whether a pull request is a duplicate of existing issues/PRs.
+func (l *LLMClient) DetectPRDuplicate(ctx context.Context, input *PRDuplicateCheckInput) (*PRDuplicateResult, error) {
+	if len(input.Candidates) == 0 {
+		return &PRDuplicateResult{IsDuplicate: false}, nil
+	}
+
+	prompt := buildPRDuplicateDetectionPrompt(input)
+
+	model := l.client.GenerativeModel(l.model)
+	model.SetTemperature(0.2)
+	model.ResponseMIMEType = "application/json"
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return nil, fmt.Errorf("failed to detect PR duplicate: %w", err)
+	}
+
+	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+		return nil, fmt.Errorf("empty response from LLM")
+	}
+
+	var responseText string
+	for _, part := range resp.Candidates[0].Content.Parts {
+		if txt, ok := part.(genai.Text); ok {
+			responseText += string(txt)
+		}
+	}
+
+	var result PRDuplicateResult
+	if err := json.Unmarshal([]byte(responseText), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse PR duplicate response: %w", err)
+	}
+
+	if !result.IsDuplicate {
+		result.DuplicateID = ""
 	}
 
 	return &result, nil
