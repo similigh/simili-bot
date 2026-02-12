@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/google/go-github/v60/github"
 	"github.com/similigh/simili-bot/internal/core/config"
 	"github.com/similigh/simili-bot/internal/integrations/gemini"
 	similiGithub "github.com/similigh/simili-bot/internal/integrations/github"
@@ -52,6 +53,17 @@ type prDuplicateOutput struct {
 	Matched    *prDuplicateCandidate     `json:"matched,omitempty"`
 }
 
+type prDuplicateRunOptions struct {
+	Token        string
+	Org          string
+	Repo         string
+	Number       int
+	TopK         int
+	Threshold    float64
+	PRCollection string
+	GeminiKey    string
+}
+
 var prDuplicateCmd = &cobra.Command{
 	Use:   "pr-duplicate",
 	Short: "Check whether a PR is a duplicate of existing issues/PRs",
@@ -82,28 +94,64 @@ func init() {
 func runPRDuplicate(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 
-	cfgPath := config.FindConfigPath(cfgFile)
-	if cfgPath == "" {
-		log.Fatalf("Config file not found. Please verify your setup.")
-	}
-	cfg, err := config.Load(cfgPath)
+	cfg, err := loadPRDuplicateConfig()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	token := prDuplicateToken
+	opts, err := resolvePRDuplicateRunOptions(cfg)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+
+	pr, prText, err := fetchPullRequestMetadataText(ctx, opts)
+	if err != nil {
+		log.Fatalf("Failed to fetch pull request metadata: %v", err)
+	}
+
+	embedding, err := generateEmbeddingForPRText(ctx, cfg, opts.GeminiKey, prText)
+	if err != nil {
+		log.Fatalf("Failed to embed pull request content: %v", err)
+	}
+
+	candidates, prCollectionMissing, err := findPRDuplicateCandidates(ctx, cfg, opts, embedding)
+	if err != nil {
+		log.Fatalf("Failed to search duplicate candidates: %v", err)
+	}
+	if prCollectionMissing && !prDuplicateJSON {
+		fmt.Printf("Warning: PR collection '%s' does not exist; searching issues only.\n\n", opts.PRCollection)
+	}
+
+	duplicateResult, matched, err := detectPRDuplicate(ctx, opts.GeminiKey, pr, candidates)
+	if err != nil {
+		log.Fatalf("Failed to run duplicate analysis: %v", err)
+	}
+
+	out := buildPRDuplicateOutput(pr, opts, candidates, duplicateResult, matched)
+	renderPRDuplicateOutput(out, cfg.Qdrant.Collection, opts.PRCollection, opts.Threshold)
+}
+
+func loadPRDuplicateConfig() (*config.Config, error) {
+	cfgPath := config.FindConfigPath(cfgFile)
+	if cfgPath == "" {
+		return nil, fmt.Errorf("config file not found. Please verify your setup")
+	}
+	return config.Load(cfgPath)
+}
+
+func resolvePRDuplicateRunOptions(cfg *config.Config) (*prDuplicateRunOptions, error) {
+	token := strings.TrimSpace(prDuplicateToken)
 	if token == "" {
-		token = os.Getenv("GITHUB_TOKEN")
+		token = strings.TrimSpace(os.Getenv("GITHUB_TOKEN"))
 	}
 	if token == "" {
-		log.Fatal("GitHub token is required (use --token or GITHUB_TOKEN env var)")
+		return nil, fmt.Errorf("GitHub token is required (use --token or GITHUB_TOKEN env var)")
 	}
 
 	parts := strings.Split(prDuplicateRepo, "/")
-	if len(parts) != 2 {
-		log.Fatalf("Invalid repo format: %s (expected owner/name)", prDuplicateRepo)
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+		return nil, fmt.Errorf("invalid repo format: %s (expected owner/name)", prDuplicateRepo)
 	}
-	org, repo := parts[0], parts[1]
 
 	threshold := prDuplicateThreshold
 	if threshold <= 0 {
@@ -121,162 +169,196 @@ func runPRDuplicate(cmd *cobra.Command, args []string) {
 		topK = 8
 	}
 
-	prCollection := resolvePRCollection(cfg, prDuplicatePRCollection)
-
-	ghClient := similiGithub.NewClient(ctx, token)
-	pr, err := ghClient.GetPullRequest(ctx, org, repo, prDuplicateNumber)
-	if err != nil {
-		log.Fatalf("Failed to fetch pull request: %v", err)
-	}
-
-	filePaths, err := listAllPullRequestFilePaths(ctx, ghClient, org, repo, prDuplicateNumber)
-	if err != nil {
-		log.Fatalf("Failed to fetch pull request files: %v", err)
-	}
-
-	prText := buildPRMetadataText(pr, filePaths)
-
-	geminiKey := cfg.Embedding.APIKey
+	geminiKey := strings.TrimSpace(cfg.Embedding.APIKey)
 	if geminiKey == "" {
-		geminiKey = os.Getenv("GEMINI_API_KEY")
+		geminiKey = strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
 	}
 	if geminiKey == "" {
-		log.Fatal("Gemini API key is required (set embedding.api_key or GEMINI_API_KEY)")
+		return nil, fmt.Errorf("Gemini API key is required (set embedding.api_key or GEMINI_API_KEY)")
 	}
 
+	return &prDuplicateRunOptions{
+		Token:        token,
+		Org:          strings.TrimSpace(parts[0]),
+		Repo:         strings.TrimSpace(parts[1]),
+		Number:       prDuplicateNumber,
+		TopK:         topK,
+		Threshold:    threshold,
+		PRCollection: resolvePRCollection(cfg, prDuplicatePRCollection),
+		GeminiKey:    geminiKey,
+	}, nil
+}
+
+func fetchPullRequestMetadataText(ctx context.Context, opts *prDuplicateRunOptions) (*github.PullRequest, string, error) {
+	ghClient := similiGithub.NewClient(ctx, opts.Token)
+
+	pr, err := ghClient.GetPullRequest(ctx, opts.Org, opts.Repo, opts.Number)
+	if err != nil {
+		return nil, "", fmt.Errorf("fetch pull request: %w", err)
+	}
+
+	filePaths, err := listAllPullRequestFilePaths(ctx, ghClient, opts.Org, opts.Repo, opts.Number)
+	if err != nil {
+		return nil, "", fmt.Errorf("fetch pull request files: %w", err)
+	}
+
+	return pr, buildPRMetadataText(pr, filePaths), nil
+}
+
+func generateEmbeddingForPRText(ctx context.Context, cfg *config.Config, geminiKey, prText string) ([]float32, error) {
 	embedder, err := gemini.NewEmbedder(geminiKey, cfg.Embedding.Model)
 	if err != nil {
-		log.Fatalf("Failed to initialize Gemini embedder: %v", err)
+		return nil, fmt.Errorf("initialize Gemini embedder: %w", err)
 	}
 	defer embedder.Close()
 
 	embedding, err := embedder.Embed(ctx, prText)
 	if err != nil {
-		log.Fatalf("Failed to embed pull request content: %v", err)
+		return nil, err
 	}
+	return embedding, nil
+}
 
+func findPRDuplicateCandidates(ctx context.Context, cfg *config.Config, opts *prDuplicateRunOptions, embedding []float32) ([]prDuplicateCandidate, bool, error) {
 	qdrantClient, err := qdrant.NewClient(cfg.Qdrant.URL, cfg.Qdrant.APIKey)
 	if err != nil {
-		log.Fatalf("Failed to initialize Qdrant client: %v", err)
+		return nil, false, fmt.Errorf("initialize Qdrant client: %w", err)
 	}
 	defer qdrantClient.Close()
 
-	searchLimit := topK * 3
-	if searchLimit < topK {
-		searchLimit = topK
+	searchLimit := opts.TopK * 3
+	if searchLimit < opts.TopK {
+		searchLimit = opts.TopK
 	}
 
 	issueCollectionExists, err := qdrantClient.CollectionExists(ctx, cfg.Qdrant.Collection)
 	if err != nil {
-		log.Fatalf("Failed to verify issue collection '%s': %v", cfg.Qdrant.Collection, err)
+		return nil, false, fmt.Errorf("verify issue collection '%s': %w", cfg.Qdrant.Collection, err)
 	}
 	if !issueCollectionExists {
-		log.Fatalf("Issue collection '%s' does not exist", cfg.Qdrant.Collection)
+		return nil, false, fmt.Errorf("issue collection '%s' does not exist", cfg.Qdrant.Collection)
 	}
 
-	issueResults, err := qdrantClient.Search(ctx, cfg.Qdrant.Collection, embedding, searchLimit, threshold)
+	issueResults, err := qdrantClient.Search(ctx, cfg.Qdrant.Collection, embedding, searchLimit, opts.Threshold)
 	if err != nil {
-		log.Fatalf("Failed searching issue collection '%s': %v", cfg.Qdrant.Collection, err)
+		return nil, false, fmt.Errorf("search issue collection '%s': %w", cfg.Qdrant.Collection, err)
 	}
 
 	prResults := make([]*qdrant.SearchResult, 0)
-	if prCollection != cfg.Qdrant.Collection {
-		prCollectionExists, err := qdrantClient.CollectionExists(ctx, prCollection)
+	prCollectionMissing := false
+	if opts.PRCollection != cfg.Qdrant.Collection {
+		prCollectionExists, err := qdrantClient.CollectionExists(ctx, opts.PRCollection)
 		if err != nil {
-			log.Fatalf("Failed to verify PR collection '%s': %v", prCollection, err)
+			return nil, false, fmt.Errorf("verify PR collection '%s': %w", opts.PRCollection, err)
 		}
 		if prCollectionExists {
-			prResults, err = qdrantClient.Search(ctx, prCollection, embedding, searchLimit, threshold)
+			prResults, err = qdrantClient.Search(ctx, opts.PRCollection, embedding, searchLimit, opts.Threshold)
 			if err != nil {
-				log.Fatalf("Failed searching PR collection '%s': %v", prCollection, err)
+				return nil, false, fmt.Errorf("search PR collection '%s': %w", opts.PRCollection, err)
 			}
-		} else if !prDuplicateJSON {
-			fmt.Printf("Warning: PR collection '%s' does not exist; searching issues only.\n\n", prCollection)
+		} else {
+			prCollectionMissing = true
 		}
 	}
 
-	candidates := mergeDuplicateCandidates(issueResults, prResults, org, repo, prDuplicateNumber)
-	if len(candidates) > topK {
-		candidates = candidates[:topK]
+	candidates := mergeDuplicateCandidates(issueResults, prResults, opts.Org, opts.Repo, opts.Number)
+	if len(candidates) > opts.TopK {
+		candidates = candidates[:opts.TopK]
+	}
+
+	return candidates, prCollectionMissing, nil
+}
+
+func detectPRDuplicate(ctx context.Context, geminiKey string, pr *github.PullRequest, candidates []prDuplicateCandidate) (*gemini.PRDuplicateResult, *prDuplicateCandidate, error) {
+	if len(candidates) == 0 {
+		return nil, nil, nil
 	}
 
 	llmClient, err := gemini.NewLLMClient(geminiKey)
 	if err != nil {
-		log.Fatalf("Failed to initialize Gemini LLM client: %v", err)
+		return nil, nil, fmt.Errorf("initialize Gemini LLM client: %w", err)
 	}
 	defer llmClient.Close()
 
-	var duplicateResult *gemini.PRDuplicateResult
-	var matched *prDuplicateCandidate
-	if len(candidates) > 0 {
-		llmCandidates := make([]gemini.PRDuplicateCandidateInput, len(candidates))
-		for i, c := range candidates {
-			llmCandidates[i] = gemini.PRDuplicateCandidateInput{
-				ID:         c.ID,
-				EntityType: c.EntityType,
-				Org:        c.Org,
-				Repo:       c.Repo,
-				Number:     c.Number,
-				Title:      c.Title,
-				Body:       c.Body,
-				URL:        c.URL,
-				Similarity: c.Similarity,
-				State:      c.State,
-			}
-		}
-
-		duplicateResult, err = llmClient.DetectPRDuplicate(ctx, &gemini.PRDuplicateCheckInput{
-			PullRequest: &gemini.IssueInput{
-				Title:  pr.GetTitle(),
-				Body:   pr.GetBody(),
-				Author: pr.GetUser().GetLogin(),
-			},
-			Candidates: llmCandidates,
-		})
-		if err != nil {
-			log.Fatalf("Failed to run duplicate analysis: %v", err)
-		}
-
-		if duplicateResult.IsDuplicate && duplicateResult.DuplicateID != "" {
-			for i := range candidates {
-				if candidates[i].ID == duplicateResult.DuplicateID {
-					c := candidates[i]
-					matched = &c
-					break
-				}
-			}
+	llmCandidates := make([]gemini.PRDuplicateCandidateInput, len(candidates))
+	for i, c := range candidates {
+		llmCandidates[i] = gemini.PRDuplicateCandidateInput{
+			ID:         c.ID,
+			EntityType: c.EntityType,
+			Org:        c.Org,
+			Repo:       c.Repo,
+			Number:     c.Number,
+			Title:      c.Title,
+			Body:       c.Body,
+			URL:        c.URL,
+			Similarity: c.Similarity,
+			State:      c.State,
 		}
 	}
 
+	duplicateResult, err := llmClient.DetectPRDuplicate(ctx, &gemini.PRDuplicateCheckInput{
+		PullRequest: &gemini.IssueInput{
+			Title:  pr.GetTitle(),
+			Body:   pr.GetBody(),
+			Author: pr.GetUser().GetLogin(),
+		},
+		Candidates: llmCandidates,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	matched := findMatchedDuplicateCandidate(candidates, duplicateResult)
+	return duplicateResult, matched, nil
+}
+
+func findMatchedDuplicateCandidate(candidates []prDuplicateCandidate, duplicateResult *gemini.PRDuplicateResult) *prDuplicateCandidate {
+	if duplicateResult == nil || !duplicateResult.IsDuplicate || duplicateResult.DuplicateID == "" {
+		return nil
+	}
+
+	for i := range candidates {
+		if candidates[i].ID == duplicateResult.DuplicateID {
+			c := candidates[i]
+			return &c
+		}
+	}
+	return nil
+}
+
+func buildPRDuplicateOutput(pr *github.PullRequest, opts *prDuplicateRunOptions, candidates []prDuplicateCandidate, duplicateResult *gemini.PRDuplicateResult, matched *prDuplicateCandidate) prDuplicateOutput {
 	out := prDuplicateOutput{
 		Candidates: candidates,
 		Duplicate:  duplicateResult,
 		Matched:    matched,
 	}
-	out.PullRequest.Org = org
-	out.PullRequest.Repo = repo
-	out.PullRequest.Number = prDuplicateNumber
+	out.PullRequest.Org = opts.Org
+	out.PullRequest.Repo = opts.Repo
+	out.PullRequest.Number = opts.Number
 	out.PullRequest.Title = pr.GetTitle()
 	out.PullRequest.URL = pr.GetHTMLURL()
+	return out
+}
 
+func renderPRDuplicateOutput(out prDuplicateOutput, issueCollection, prCollection string, threshold float64) {
 	if prDuplicateJSON {
 		printJSONOutput(out)
 		return
 	}
 
-	fmt.Printf("PR: %s/%s#%d\n", org, repo, prDuplicateNumber)
-	fmt.Printf("Title: %s\n", pr.GetTitle())
-	fmt.Printf("Issue Collection: %s\n", cfg.Qdrant.Collection)
+	fmt.Printf("PR: %s/%s#%d\n", out.PullRequest.Org, out.PullRequest.Repo, out.PullRequest.Number)
+	fmt.Printf("Title: %s\n", out.PullRequest.Title)
+	fmt.Printf("Issue Collection: %s\n", issueCollection)
 	fmt.Printf("PR Collection: %s\n", prCollection)
 	fmt.Printf("Threshold: %.2f\n\n", threshold)
 
-	if len(candidates) == 0 {
+	if len(out.Candidates) == 0 {
 		fmt.Println("No similar issues or pull requests found.")
 		return
 	}
 
 	fmt.Println("Top Candidates:")
-	for i, c := range candidates {
+	for i, c := range out.Candidates {
 		label := "Issue"
 		if c.EntityType == "pull_request" {
 			label = "PR"
@@ -286,27 +368,27 @@ func runPRDuplicate(cmd *cobra.Command, args []string) {
 		fmt.Printf("   %s\n", c.URL)
 	}
 
-	if duplicateResult == nil {
+	if out.Duplicate == nil {
 		return
 	}
 
 	fmt.Println()
-	if duplicateResult.IsDuplicate {
-		fmt.Printf("Duplicate: YES (confidence %.2f)\n", duplicateResult.Confidence)
-		if matched != nil {
+	if out.Duplicate.IsDuplicate {
+		fmt.Printf("Duplicate: YES (confidence %.2f)\n", out.Duplicate.Confidence)
+		if out.Matched != nil {
 			label := "Issue"
-			if matched.EntityType == "pull_request" {
+			if out.Matched.EntityType == "pull_request" {
 				label = "PR"
 			}
-			fmt.Printf("Matched: [%s] %s/%s#%d\n", label, matched.Org, matched.Repo, matched.Number)
-		} else if duplicateResult.DuplicateID != "" {
-			fmt.Printf("Matched ID: %s\n", duplicateResult.DuplicateID)
+			fmt.Printf("Matched: [%s] %s/%s#%d\n", label, out.Matched.Org, out.Matched.Repo, out.Matched.Number)
+		} else if out.Duplicate.DuplicateID != "" {
+			fmt.Printf("Matched ID: %s\n", out.Duplicate.DuplicateID)
 		}
 	} else {
-		fmt.Printf("Duplicate: NO (confidence %.2f)\n", duplicateResult.Confidence)
+		fmt.Printf("Duplicate: NO (confidence %.2f)\n", out.Duplicate.Confidence)
 	}
-	if duplicateResult.Reasoning != "" {
-		fmt.Printf("Reasoning: %s\n", duplicateResult.Reasoning)
+	if out.Duplicate.Reasoning != "" {
+		fmt.Printf("Reasoning: %s\n", out.Duplicate.Reasoning)
 	}
 }
 
