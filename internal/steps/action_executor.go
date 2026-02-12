@@ -41,7 +41,7 @@ func (s *ActionExecutor) Run(ctx *pipeline.Context) error {
 		if hasComment && comment != "" {
 			log.Printf("[action_executor] DRY RUN: Would post comment:\n%s", comment)
 		}
-		if ctx.TransferTarget != "" {
+		if ctx.TransferTarget != "" && ctx.Issue.EventType != "pull_request" && ctx.Issue.EventType != "pr_comment" {
 			log.Printf("[action_executor] DRY RUN: Would transfer to %s", ctx.TransferTarget)
 		}
 		// TODO: Dry run log for labels if we add label logic
