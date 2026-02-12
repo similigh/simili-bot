@@ -25,12 +25,13 @@ import (
 )
 
 var (
-	indexRepo       string
-	indexSince      string // Can be a timestamp (ISO8601) or issue number (int)
-	indexWorkers    int
-	indexToken      string
-	indexDryRun     bool
-	indexIncludePRs bool
+	indexRepo         string
+	indexSince        string // Timestamp (RFC3339), mapped to GitHub's "updated_at" filter.
+	indexWorkers      int
+	indexToken        string
+	indexDryRun       bool
+	indexIncludePRs   bool
+	indexPRCollection string
 )
 
 type Checkpoint struct {
@@ -41,10 +42,13 @@ type Checkpoint struct {
 // indexCmd represents the index command
 var indexCmd = &cobra.Command{
 	Use:   "index",
-	Short: "Bulk index issues into the vector database",
+	Short: "Bulk index issues (and optionally PRs) into the vector database",
 	Long: `Index existing issues from a GitHub repository into the Qdrant vector database.
 It fetches issues, comments, chunks the text, generates embeddings using the active AI provider,
 and stores them for semantic search.
+
+Optionally, pull requests can also be indexed into a dedicated PR collection
+using metadata (title, description, changed file paths, and linked issues).
 
 Supports resuming via a local checkpoint file or --since flag.`,
 	Run: runIndex,
@@ -54,11 +58,12 @@ func init() {
 	rootCmd.AddCommand(indexCmd)
 
 	indexCmd.Flags().StringVar(&indexRepo, "repo", "", "Target repository (owner/name)")
-	indexCmd.Flags().StringVar(&indexSince, "since", "", "Start indexing from this issue number or timestamp")
+	indexCmd.Flags().StringVar(&indexSince, "since", "", "Start indexing from this RFC3339 timestamp (filters by updated_at)")
 	indexCmd.Flags().IntVar(&indexWorkers, "workers", 5, "Number of concurrent workers")
 	indexCmd.Flags().StringVar(&indexToken, "token", "", "GitHub token (optional, defaults to GITHUB_TOKEN env var)")
 	indexCmd.Flags().BoolVar(&indexDryRun, "dry-run", false, "Simulate indexing without writing to DB")
-	indexCmd.Flags().BoolVar(&indexIncludePRs, "include-prs", true, "Include pull requests in indexing")
+	indexCmd.Flags().BoolVar(&indexIncludePRs, "include-prs", false, "Also index pull requests (metadata only) into PR collection")
+	indexCmd.Flags().StringVar(&indexPRCollection, "pr-collection", "", "Override PR collection name (default: qdrant.pr_collection or QDRANT_PR_COLLECTION)")
 
 	if err := indexCmd.MarkFlagRequired("repo"); err != nil {
 		log.Fatalf("Failed to mark repo flag as required: %v", err)
@@ -77,6 +82,7 @@ func runIndex(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
+	prCollection := resolvePRCollection(cfg, indexPRCollection)
 
 	// 2. Auth & Clients
 	token := indexToken
@@ -112,6 +118,13 @@ func runIndex(cmd *cobra.Command, args []string) {
 		if err != nil {
 			log.Fatalf("Failed to create/verify collection: %v", err)
 		}
+
+		if indexIncludePRs && prCollection != cfg.Qdrant.Collection {
+			err = qdrantClient.CreateCollection(ctx, prCollection, cfg.Embedding.Dimensions)
+			if err != nil {
+				log.Fatalf("Failed to create/verify PR collection: %v", err)
+			}
+		}
 	}
 
 	// 3. Parse Repo
@@ -125,7 +138,7 @@ func runIndex(cmd *cobra.Command, args []string) {
 	// Checkpoint logic omitted for simplicity in v0.1.0 as standard pagination handles most cases.
 	// Users can rely on --since for updates.
 
-	log.Printf("Starting indexing for %s/%s with %d workers...", org, repoName, indexWorkers)
+	log.Printf("Starting indexing for %s/%s with %d workers (include PRs: %t)...", org, repoName, indexWorkers, indexIncludePRs)
 
 	// Fetch loop
 	page := 1
@@ -133,7 +146,8 @@ func runIndex(cmd *cobra.Command, args []string) {
 
 	// Job channel
 	type Job struct {
-		Issue *github.Issue
+		Issue         *github.Issue
+		IsPullRequest bool
 	}
 	jobs := make(chan Job, indexWorkers)
 	var wg sync.WaitGroup
@@ -144,7 +158,11 @@ func runIndex(cmd *cobra.Command, args []string) {
 		go func(id int) {
 			defer wg.Done()
 			for job := range jobs {
-				processIssue(ctx, id, job.Issue, ghClient, geminiClient, qdrantClient, splitter, cfg.Qdrant.Collection, org, repoName, indexDryRun)
+				if job.IsPullRequest {
+					processPullRequest(ctx, id, job.Issue, ghClient, geminiClient, qdrantClient, splitter, prCollection, org, repoName, indexDryRun)
+				} else {
+					processIssue(ctx, id, job.Issue, ghClient, geminiClient, qdrantClient, splitter, cfg.Qdrant.Collection, org, repoName, indexDryRun)
+				}
 			}
 		}(i)
 	}
@@ -152,7 +170,7 @@ func runIndex(cmd *cobra.Command, args []string) {
 	// Issue Producer
 	opts := &github.IssueListByRepoOptions{
 		State:       "all",
-		Sort:        "created",
+		Sort:        "updated",
 		Direction:   "asc",
 		ListOptions: github.ListOptions{PerPage: 100},
 	}
@@ -181,10 +199,13 @@ func runIndex(cmd *cobra.Command, args []string) {
 		log.Printf("Fetched page %d (%d issues)", page, len(issues))
 
 		for _, issue := range issues {
-			if !indexIncludePRs && issue.IsPullRequest() {
+			if issue.IsPullRequest() {
+				if indexIncludePRs {
+					jobs <- Job{Issue: issue, IsPullRequest: true}
+				}
 				continue
 			}
-			jobs <- Job{Issue: issue}
+			jobs <- Job{Issue: issue, IsPullRequest: false}
 		}
 
 		if resp.NextPage == 0 {
@@ -248,11 +269,6 @@ func processIssue(ctx context.Context, workerID int, issue *github.Issue, gh *si
 		return
 	}
 
-	itemType := "issue"
-	if issue.IsPullRequest() {
-		itemType = "pull_request"
-	}
-
 	points := make([]*qdrant.Point, len(chunks))
 	for i, chunk := range chunks {
 		chunkID := uuid.NewMD5(uuid.NameSpaceURL, fmt.Appendf(nil, "%s/%s#%d-chunk-%d", org, repo, issue.GetNumber(), i)).String()
@@ -263,11 +279,11 @@ func processIssue(ctx context.Context, workerID int, issue *github.Issue, gh *si
 				"org":          org,
 				"repo":         repo,
 				"issue_number": issue.GetNumber(),
+				"title":        issue.GetTitle(),
 				"text":         chunk,
 				"url":          issue.GetHTMLURL(),
-				"type":         itemType,
 				"state":        issue.GetState(),
-				"title":        issue.GetTitle(),
+				"type":         "issue",
 			},
 		}
 	}
@@ -278,4 +294,71 @@ func processIssue(ctx context.Context, workerID int, issue *github.Issue, gh *si
 	} else {
 		log.Printf("[Worker %d] Indexed #%d", workerID, issue.GetNumber())
 	}
+}
+
+func processPullRequest(ctx context.Context, workerID int, issue *github.Issue, gh *similiGithub.Client, em *gemini.Embedder, qd *qdrant.Client, splitter *text.RecursiveCharacterSplitter, collection, org, repo string, dryRun bool) {
+	prNumber := issue.GetNumber()
+
+	pr, err := gh.GetPullRequest(ctx, org, repo, prNumber)
+	if err != nil {
+		log.Printf("[Worker %d] Error fetching PR #%d: %v", workerID, prNumber, err)
+		return
+	}
+
+	filePaths, err := listAllPullRequestFilePaths(ctx, gh, org, repo, prNumber)
+	if err != nil {
+		log.Printf("[Worker %d] Error fetching files for PR #%d: %v", workerID, prNumber, err)
+		return
+	}
+
+	fullText := buildPRMetadataText(pr, filePaths)
+	if strings.TrimSpace(fullText) == "" {
+		log.Printf("[Worker %d] PR #%d has no indexable content, skipping", workerID, prNumber)
+		return
+	}
+
+	chunks := splitter.SplitText(fullText)
+	if len(chunks) == 0 {
+		chunks = []string{fullText}
+	}
+
+	embeddings, err := em.EmbedBatch(ctx, chunks)
+	if err != nil {
+		log.Printf("[Worker %d] Error embedding PR #%d: %v", workerID, prNumber, err)
+		return
+	}
+
+	if dryRun {
+		log.Printf("[DryRun] Would upsert PR #%d (%d chunks) into %s", prNumber, len(chunks), collection)
+		return
+	}
+
+	points := make([]*qdrant.Point, len(chunks))
+	for i, chunk := range chunks {
+		pointID := uuid.NewMD5(uuid.NameSpaceURL, []byte(fmt.Sprintf("%s/%s/pr/%d/chunk/%d", org, repo, prNumber, i))).String()
+		points[i] = &qdrant.Point{
+			ID:     pointID,
+			Vector: embeddings[i],
+			Payload: map[string]interface{}{
+				"org":           org,
+				"repo":          repo,
+				"pr_number":     prNumber,
+				"title":         pr.GetTitle(),
+				"description":   strings.TrimSpace(pr.GetBody()),
+				"text":          chunk,
+				"url":           pr.GetHTMLURL(),
+				"state":         pr.GetState(),
+				"merged":        pr.GetMerged(),
+				"changed_files": strings.Join(filePaths, "\n"),
+				"type":          "pull_request",
+			},
+		}
+	}
+
+	if err := qd.Upsert(ctx, collection, points); err != nil {
+		log.Printf("[Worker %d] Error upserting PR #%d: %v", workerID, prNumber, err)
+		return
+	}
+
+	log.Printf("[Worker %d] Indexed PR #%d", workerID, prNumber)
 }
