@@ -287,6 +287,12 @@ func enrichIssueFromGitHubEvent(issue *pipeline.Issue, raw map[string]interface{
 		if issue.EventType == "" {
 			issue.EventType = "issues"
 		}
+		// PR comments arrive as issue_comment with issue.pull_request set
+		if issue.EventType == "issue_comment" {
+			if _, hasPR := iss["pull_request"]; hasPR {
+				issue.EventType = "pr_comment"
+			}
+		}
 	}
 
 	if pr, ok := raw["pull_request"].(map[string]interface{}); ok {

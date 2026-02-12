@@ -66,7 +66,7 @@ func (s *ActionExecutor) Run(ctx *pipeline.Context) error {
 	}
 
 	// 2. Transfer issue to another repository (issues only)
-	if ctx.TransferTarget != "" && ctx.Issue.EventType != "pull_request" {
+	if ctx.TransferTarget != "" && ctx.Issue.EventType != "pull_request" && ctx.Issue.EventType != "pr_comment" {
 		newURL, err := s.client.TransferIssue(ctx.Ctx, ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number, ctx.TransferTarget)
 		if err != nil {
 			log.Printf("[action_executor] Failed to transfer issue to %s: %v", ctx.TransferTarget, err)

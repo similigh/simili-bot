@@ -268,7 +268,7 @@ func (s *ResponseBuilder) buildDuplicateSection(ctx *pipeline.Context) string {
 	parts = append(parts, "> [!WARNING]")
 	parts = append(parts, fmt.Sprintf("> **Possible Duplicate** (Confidence: %d%%)", confidencePct))
 	subject := "issue"
-	if ctx.Issue.EventType == "pull_request" {
+	if ctx.Issue.EventType == "pull_request" || ctx.Issue.EventType == "pr_comment" {
 		subject = "pull request"
 	}
 	parts = append(parts, fmt.Sprintf("> This %s might be a duplicate of #%d.", subject, duplicateResult.DuplicateOf))

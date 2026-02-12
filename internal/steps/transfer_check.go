@@ -28,7 +28,7 @@ func (s *TransferCheck) Name() string {
 
 // Run checks if the issue should be transferred using transfer rules.
 func (s *TransferCheck) Run(ctx *pipeline.Context) error {
-	if ctx.Issue.EventType == "pull_request" {
+	if ctx.Issue.EventType == "pull_request" || ctx.Issue.EventType == "pr_comment" {
 		log.Printf("[transfer_check] Pull request event detected, skipping transfer rules")
 		return nil
 	}

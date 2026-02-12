@@ -82,3 +82,36 @@ func TestEnrichIssueFromGitHubEvent_IssueComment(t *testing.T) {
 		t.Fatalf("expected related issue number to be parsed, got %d", issue.Number)
 	}
 }
+
+func TestEnrichIssueFromGitHubEvent_PRComment(t *testing.T) {
+	issue := &pipeline.Issue{}
+	raw := map[string]interface{}{
+		"action": "created",
+		"comment": map[string]interface{}{
+			"body": "Looks good!",
+			"user": map[string]interface{}{"login": "reviewer"},
+		},
+		"issue": map[string]interface{}{
+			"number":       float64(42),
+			"title":        "feat: add PR support",
+			"body":         "PR description",
+			"pull_request": map[string]interface{}{"url": "https://api.github.com/repos/org/repo/pulls/42"},
+		},
+		"repository": map[string]interface{}{
+			"name":  "simili-bot",
+			"owner": map[string]interface{}{"login": "similigh"},
+		},
+	}
+
+	enrichIssueFromGitHubEvent(issue, raw)
+
+	if issue.EventType != "pr_comment" {
+		t.Fatalf("expected pr_comment event type, got %q", issue.EventType)
+	}
+	if issue.CommentBody != "Looks good!" || issue.CommentAuthor != "reviewer" {
+		t.Fatalf("expected comment data, got body=%q author=%q", issue.CommentBody, issue.CommentAuthor)
+	}
+	if issue.Number != 42 {
+		t.Fatalf("expected issue number 42, got %d", issue.Number)
+	}
+}
