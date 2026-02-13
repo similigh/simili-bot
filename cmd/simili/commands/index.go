@@ -7,6 +7,7 @@ package commands
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -243,14 +244,16 @@ func processIssue(ctx context.Context, workerID int, issue *github.Issue, gh *si
 		return
 	}
 
+	itemType := "issue"
+	if issue.IsPullRequest() {
+		itemType = "pull_request"
+	}
+
 	points := make([]*qdrant.Point, len(chunks))
 	for i, chunk := range chunks {
-		itemType := "issue"
-		if issue.IsPullRequest() {
-			itemType = "pull_request"
-		}
+		chunkID := uuid.NewMD5(uuid.NameSpaceURL, fmt.Appendf(nil, "%s/%s#%d-chunk-%d", org, repo, issue.GetNumber(), i)).String()
 		points[i] = &qdrant.Point{
-			ID:     uuid.New().String(),
+			ID:     chunkID,
 			Vector: embeddings[i],
 			Payload: map[string]any{
 				"org":          org,
