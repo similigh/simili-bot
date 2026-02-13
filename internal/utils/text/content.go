@@ -29,14 +29,15 @@ func BuildEmbeddingContent(title, body string, comments []Comment) string {
 
 	hasHeader := false
 	for _, c := range comments {
-		if c.Body == "" {
+		cb := strings.TrimSpace(c.Body)
+		if cb == "" {
 			continue
 		}
 		if !hasHeader {
 			sb.WriteString("Comments:\n")
 			hasHeader = true
 		}
-		fmt.Fprintf(&sb, "- %s: %s\n", c.Author, c.Body)
+		fmt.Fprintf(&sb, "- %s: %s\n", c.Author, cb)
 	}
 
 	return sb.String()
