@@ -102,16 +102,20 @@ type DuplicateResult struct {
 }
 
 // NewLLMClient creates a new Gemini LLM client.
-func NewLLMClient(apiKey string) (*LLMClient, error) {
+func NewLLMClient(apiKey, model string) (*LLMClient, error) {
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
 	}
 
+	if model == "" {
+		model = "gemini-2.0-flash-lite" // Fast and cost-effective
+	}
+
 	return &LLMClient{
 		client: client,
-		model:  "gemini-2.0-flash-lite", // Fast and cost-effective
+		model:  model,
 	}, nil
 }
 

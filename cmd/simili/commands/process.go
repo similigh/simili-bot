@@ -247,11 +247,21 @@ func runProcess() {
 	}
 
 	// LLM Client
-	// Re-use geminiKey resolved above
-	if geminiKey != "" {
-		llm, err := gemini.NewLLMClient(geminiKey)
+	llmKey := cfg.LLM.APIKey
+	if llmKey == "" {
+		llmKey = geminiKey // fall back to embedding key
+	}
+	llmModel := cfg.LLM.Model
+	if envModel := os.Getenv("LLM_MODEL"); envModel != "" {
+		llmModel = envModel
+	}
+	if llmKey != "" {
+		llm, err := gemini.NewLLMClient(llmKey, llmModel)
 		if err == nil {
 			deps.LLMClient = llm
+			if verbose {
+				fmt.Printf("Initialized Gemini LLM client with model: %s\n", llmModel)
+			}
 		} else {
 			fmt.Printf("Warning: Failed to initialize Gemini LLM client: %v\n", err)
 		}
