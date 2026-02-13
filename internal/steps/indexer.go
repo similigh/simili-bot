@@ -11,6 +11,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/google/go-github/v60/github"
 	"github.com/google/uuid"
 	"github.com/similigh/simili-bot/internal/core/pipeline"
 	"github.com/similigh/simili-bot/internal/integrations/gemini"
@@ -62,24 +63,29 @@ func (s *Indexer) Run(ctx *pipeline.Context) error {
 		return nil
 	}
 
-	// Fetch comments for richer embedding content.
+	// Fetch all comment pages for richer embedding content.
 	var textComments []text.Comment
 	if s.github != nil {
-		ghComments, _, err := s.github.ListComments(ctx.Ctx, ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number, nil)
-		if err != nil {
-			log.Printf("[indexer] WARNING: failed to fetch comments for #%d: %v", ctx.Issue.Number, err)
-		} else {
+		page := 1
+		for {
+			ghComments, resp, err := s.github.ListComments(ctx.Ctx, ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number, &github.IssueListCommentsOptions{
+				ListOptions: github.ListOptions{PerPage: 100, Page: page},
+			})
+			if err != nil {
+				log.Printf("[indexer] WARNING: failed to fetch comments for #%d: %v", ctx.Issue.Number, err)
+				break
+			}
 			for _, c := range ghComments {
-				body := strings.TrimSpace(c.GetBody())
-				if body == "" {
-					continue
-				}
 				author := "deleted-user"
 				if c.User != nil {
 					author = c.User.GetLogin()
 				}
-				textComments = append(textComments, text.Comment{Author: author, Body: body})
+				textComments = append(textComments, text.Comment{Author: author, Body: strings.TrimSpace(c.GetBody())})
 			}
+			if resp == nil || resp.NextPage == 0 {
+				break
+			}
+			page = resp.NextPage
 		}
 	}
 
@@ -90,6 +96,12 @@ func (s *Indexer) Run(ctx *pipeline.Context) error {
 	embedding, err := s.embedder.Embed(ctx.Ctx, content)
 	if err != nil {
 		return fmt.Errorf("failed to generate embedding: %w", err)
+	}
+
+	// Resolve canonical item type for downstream consumers.
+	itemType := "issue"
+	if ctx.Issue.EventType == "pull_request" || ctx.Issue.EventType == "pr_comment" {
+		itemType = "pull_request"
 	}
 
 	// Generate deterministic UUID
@@ -109,7 +121,7 @@ func (s *Indexer) Run(ctx *pipeline.Context) error {
 			"state":  ctx.Issue.State,
 			"author": ctx.Issue.Author,
 			"labels": ctx.Issue.Labels,
-			"type":   ctx.Issue.EventType,
+			"type":   itemType,
 		},
 	}
 
