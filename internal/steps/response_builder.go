@@ -230,7 +230,7 @@ func (s *ResponseBuilder) buildSimilarSection(ctx *pipeline.Context) string {
 	parts = append(parts, "<details>")
 	parts = append(parts, "<summary>Similar Threads</summary>")
 	parts = append(parts, "")
-	parts = append(parts, "| Similarity | Issue | Status |")
+	parts = append(parts, "| Similarity | Thread | Status |")
 	parts = append(parts, "| :--- | :--- | :--- |")
 
 	for _, similar := range ctx.SimilarIssues {
