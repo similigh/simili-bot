@@ -33,29 +33,19 @@ func resolvePRCollection(cfg *similiConfig.Config, override string) string {
 }
 
 func listAllPullRequestFilePaths(ctx context.Context, gh *similiGithub.Client, org, repo string, number int) ([]string, error) {
-	paths := make([]string, 0, 32)
-	page := 1
+	files, _, err := gh.ListPullRequestFiles(ctx, org, repo, number, &github.ListOptions{
+		PerPage: 100,
+	})
+	if err != nil {
+		return nil, err
+	}
 
-	for {
-		files, resp, err := gh.ListPullRequestFiles(ctx, org, repo, number, &github.ListOptions{
-			PerPage: 100,
-			Page:    page,
-		})
-		if err != nil {
-			return nil, err
+	paths := make([]string, 0, len(files))
+	for _, f := range files {
+		name := strings.TrimSpace(f.GetFilename())
+		if name != "" {
+			paths = append(paths, name)
 		}
-
-		for _, f := range files {
-			name := strings.TrimSpace(f.GetFilename())
-			if name != "" {
-				paths = append(paths, name)
-			}
-		}
-
-		if resp == nil || resp.NextPage == 0 {
-			break
-		}
-		page = resp.NextPage
 	}
 
 	sort.Strings(paths)

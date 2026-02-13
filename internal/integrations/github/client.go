@@ -154,18 +154,37 @@ func (c *Client) ListComments(ctx context.Context, org, repo string, number int,
 	return comments, resp, nil
 }
 
-// ListPullRequestFiles fetches files changed in a pull request.
+// ListPullRequestFiles fetches files changed in a pull request across all pages.
 func (c *Client) ListPullRequestFiles(ctx context.Context, org, repo string, number int, opts *github.ListOptions) ([]*github.CommitFile, *github.Response, error) {
+	var listOpts github.ListOptions
 	if opts == nil {
-		opts = &github.ListOptions{PerPage: 100}
+		listOpts = github.ListOptions{PerPage: 100}
+	} else {
+		listOpts = *opts
+		if listOpts.PerPage == 0 {
+			listOpts.PerPage = 100
+		}
 	}
 
-	files, resp, err := c.client.PullRequests.ListFiles(ctx, org, repo, number, opts)
-	if err != nil {
-		return nil, resp, fmt.Errorf("failed to list files for pull request #%d in %s/%s: %w", number, org, repo, err)
+	allFiles := make([]*github.CommitFile, 0, listOpts.PerPage)
+	var lastResp *github.Response
+
+	for {
+		files, resp, err := c.client.PullRequests.ListFiles(ctx, org, repo, number, &listOpts)
+		if err != nil {
+			return nil, resp, fmt.Errorf("failed to list files for pull request #%d in %s/%s: %w", number, org, repo, err)
+		}
+
+		allFiles = append(allFiles, files...)
+		lastResp = resp
+
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		listOpts.Page = resp.NextPage
 	}
 
-	return files, resp, nil
+	return allFiles, lastResp, nil
 }
 
 // GetFileContent fetches the raw content of a file from a repository.
