@@ -10,12 +10,14 @@ import (
 	"log"
 
 	"github.com/similigh/simili-bot/internal/core/pipeline"
+	"github.com/similigh/simili-bot/internal/integrations/gemini"
 	"github.com/similigh/simili-bot/internal/integrations/qdrant"
 )
 
 // VectorDBPrep ensures the vector database collection exists and is ready.
 type VectorDBPrep struct {
 	client qdrant.VectorStore
+	embed  *gemini.Embedder
 	dryRun bool
 }
 
@@ -23,6 +25,7 @@ type VectorDBPrep struct {
 func NewVectorDBPrep(deps *pipeline.Dependencies) *VectorDBPrep {
 	return &VectorDBPrep{
 		client: deps.VectorStore,
+		embed:  deps.Embedder,
 		dryRun: deps.DryRun,
 	}
 }
@@ -36,6 +39,9 @@ func (s *VectorDBPrep) Name() string {
 func (s *VectorDBPrep) Run(ctx *pipeline.Context) error {
 	collectionName := ctx.Config.Qdrant.Collection
 	dimension := ctx.Config.Embedding.Dimensions
+	if s.embed != nil && s.embed.Dimensions() > 0 {
+		dimension = s.embed.Dimensions()
+	}
 
 	if s.dryRun {
 		log.Printf("[vectordb_prep] DRY RUN: Would verify collection '%s' exists with dimension %d", collectionName, dimension)

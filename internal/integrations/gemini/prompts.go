@@ -312,3 +312,60 @@ ONLY set is_duplicate to true if confidence >= 0.85. When in doubt, set is_dupli
 		similarList.String(),
 	)
 }
+
+// buildPRDuplicateDetectionPrompt creates a prompt for PR duplicate detection across issues and PRs.
+func buildPRDuplicateDetectionPrompt(input *PRDuplicateCheckInput) string {
+	var candidates strings.Builder
+	for i, c := range input.Candidates {
+		fmt.Fprintf(&candidates, "--- Candidate %d ---\n", i+1)
+		fmt.Fprintf(&candidates, "ID: %s\n", c.ID)
+		fmt.Fprintf(&candidates, "Type: %s\n", c.EntityType)
+		fmt.Fprintf(&candidates, "Repository: %s/%s\n", c.Org, c.Repo)
+		fmt.Fprintf(&candidates, "Number: %d\n", c.Number)
+		fmt.Fprintf(&candidates, "State: %s\n", c.State)
+		fmt.Fprintf(&candidates, "Vector similarity: %.0f%%\n", c.Similarity*100)
+		fmt.Fprintf(&candidates, "Title: %s\n", c.Title)
+		if c.Body != "" {
+			fmt.Fprintf(&candidates, "Content:\n%s\n", truncate(c.Body, 600))
+		}
+		fmt.Fprintf(&candidates, "URL: %s\n\n", c.URL)
+	}
+
+	return fmt.Sprintf(`You are a strict duplicate detector for GitHub pull requests.
+
+Task:
+Determine whether the CURRENT pull request is a true duplicate of any candidate issue or pull request.
+
+Definition of duplicate:
+- A duplicate means the PR addresses the same underlying problem/request and intended outcome.
+- Related context is not enough. Same component but different fix scope is NOT a duplicate.
+
+Current Pull Request:
+- Title: %s
+- Description: %s
+
+Candidates:
+%s
+
+Return valid JSON in this exact format:
+{
+  "is_duplicate": false,
+  "duplicate_id": "",
+  "confidence": 0.0,
+  "reasoning": "brief explanation"
+}
+
+Rules:
+- If is_duplicate is true, duplicate_id MUST be exactly one ID from the candidate list.
+- If is_duplicate is false, duplicate_id MUST be "".
+- Be conservative: only mark duplicate when confidence >= 0.85.
+- Confidence guidance:
+  - 0.95+ certain duplicate
+  - 0.85-0.95 very likely duplicate
+  - 0.70-0.85 related but likely distinct
+  - <0.70 different`,
+		input.PullRequest.Title,
+		truncate(input.PullRequest.Body, 1200),
+		candidates.String(),
+	)
+}

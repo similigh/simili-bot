@@ -37,17 +37,17 @@ type IssueRequest struct {
 
 // AnalysisResponse represents the response sent to the frontend
 type AnalysisResponse struct {
-	Success       bool                   `json:"success"`
-	Error         string                 `json:"error,omitempty"`
-	SimilarIssues []pipeline.SimilarIssue `json:"similar_issues"`
-	IsDuplicate   bool                   `json:"is_duplicate"`
-	DuplicateOf   int                    `json:"duplicate_of"`
-	DuplicateReason string               `json:"duplicate_reason"`
-	QualityScore  float64                `json:"quality_score"`
-	QualityIssues []string               `json:"quality_issues"`
-	SuggestedLabels []string             `json:"suggested_labels"`
-	TransferTarget string                `json:"transfer_target"`
-	TransferReason string                `json:"transfer_reason"`
+	Success         bool                    `json:"success"`
+	Error           string                  `json:"error,omitempty"`
+	SimilarIssues   []pipeline.SimilarIssue `json:"similar_issues"`
+	IsDuplicate     bool                    `json:"is_duplicate"`
+	DuplicateOf     int                     `json:"duplicate_of"`
+	DuplicateReason string                  `json:"duplicate_reason"`
+	QualityScore    float64                 `json:"quality_score"`
+	QualityIssues   []string                `json:"quality_issues"`
+	SuggestedLabels []string                `json:"suggested_labels"`
+	TransferTarget  string                  `json:"transfer_target"`
+	TransferReason  string                  `json:"transfer_reason"`
 }
 
 var (
@@ -114,13 +114,8 @@ func initDependencies(cfg *config.Config) (*pipeline.Dependencies, error) {
 		DryRun: true, // Always dry-run for web UI
 	}
 
-	// Gemini Embedder
-	geminiKey := os.Getenv("GEMINI_API_KEY")
-	if geminiKey == "" {
-		return nil, fmt.Errorf("GEMINI_API_KEY is required")
-	}
-
-	embedder, err := gemini.NewEmbedder(geminiKey, cfg.Embedding.Model)
+	// Embedder (Gemini/OpenAI auto-selected by available keys)
+	embedder, err := gemini.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init embedder: %w", err)
 	}
@@ -148,7 +143,7 @@ func initDependencies(cfg *config.Config) (*pipeline.Dependencies, error) {
 	}
 
 	// LLM Client
-	llm, err := gemini.NewLLMClient(geminiKey)
+	llm, err := gemini.NewLLMClient(cfg.Embedding.APIKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init LLM: %w", err)
 	}
@@ -212,14 +207,14 @@ func handleAnalyze(w http.ResponseWriter, r *http.Request) {
 
 	// Create pipeline issue
 	issue := &pipeline.Issue{
-		Org:       req.Org,
-		Repo:      req.Repo,
-		Number:    0, // New issue
-		Title:     req.Title,
-		Body:      req.Body,
-		Labels:    req.Labels,
-		State:     "open",
-		EventType: "issues",
+		Org:         req.Org,
+		Repo:        req.Repo,
+		Number:      0, // New issue
+		Title:       req.Title,
+		Body:        req.Body,
+		Labels:      req.Labels,
+		State:       "open",
+		EventType:   "issues",
 		EventAction: "opened",
 	}
 

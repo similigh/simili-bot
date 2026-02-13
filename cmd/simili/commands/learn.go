@@ -91,7 +91,7 @@ func runLearn(cmd *cobra.Command, args []string) {
 	// 3. Initialize Embedder
 	embedder, err := gemini.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
 	if err != nil {
-		log.Fatalf("Failed to initialize Gemini embedder: %v", err)
+		log.Fatalf("Failed to initialize embedder: %v", err)
 	}
 	defer embedder.Close()
 
@@ -164,8 +164,12 @@ func runLearn(cmd *cobra.Command, args []string) {
 
 	// 9. Ensure Collection Exists
 	repoCollection := cfg.Transfer.RepoCollection
+	embeddingDimensions := cfg.Embedding.Dimensions
+	if dim := embedder.Dimensions(); dim > 0 {
+		embeddingDimensions = dim
+	}
 	log.Printf("Ensuring collection '%s' exists...", repoCollection)
-	if err := qdrantClient.CreateCollection(ctx, repoCollection, cfg.Embedding.Dimensions); err != nil {
+	if err := qdrantClient.CreateCollection(ctx, repoCollection, embeddingDimensions); err != nil {
 		log.Fatalf("Failed to create/verify collection: %v", err)
 	}
 
