@@ -249,6 +249,40 @@ func (c *Client) Delete(ctx context.Context, collectionName string, id string) e
 	return nil
 }
 
+// SetPayload updates payload fields on existing points without re-uploading vectors.
+func (c *Client) SetPayload(ctx context.Context, collectionName string, id string, payload map[string]interface{}) error {
+	authCtx, cancel := c.ctxWithAuth(ctx)
+	defer cancel()
+
+	qPayload := make(map[string]*pb.Value)
+	for k, v := range payload {
+		qPayload[k] = toQdrantValue(v)
+	}
+
+	pointID := &pb.PointId{
+		PointIdOptions: &pb.PointId_Uuid{
+			Uuid: id,
+		},
+	}
+
+	_, err := c.points.SetPayload(authCtx, &pb.SetPayloadPoints{
+		CollectionName: collectionName,
+		Payload:        qPayload,
+		PointsSelector: &pb.PointsSelector{
+			PointsSelectorOneOf: &pb.PointsSelector_Points{
+				Points: &pb.PointsIdsList{
+					Ids: []*pb.PointId{pointID},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to set payload: %w", err)
+	}
+
+	return nil
+}
+
 // Helper to convert Go value to Qdrant Value
 func toQdrantValue(v interface{}) *pb.Value {
 	switch val := v.(type) {

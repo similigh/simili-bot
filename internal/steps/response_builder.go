@@ -234,9 +234,14 @@ func (s *ResponseBuilder) buildSimilarSection(ctx *pipeline.Context) string {
 	parts = append(parts, "| :--- | :--- | :--- |")
 
 	for _, similar := range ctx.SimilarIssues {
-		status := "Open"
-		if similar.State == "closed" {
+		var status string
+		switch similar.State {
+		case "closed":
 			status = "Closed"
+		case "open":
+			status = "Open"
+		default:
+			status = "—"
 		}
 
 		// Truncate title if too long (UTF-8 safe)
