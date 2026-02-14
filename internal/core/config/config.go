@@ -43,6 +43,11 @@ type Config struct {
 
 	// Transfer configures cross-repository issue routing.
 	Transfer TransferConfig `yaml:"transfer,omitempty"`
+
+	// BotUsers is a list of GitHub usernames whose events should be ignored
+	// to prevent infinite comment loops. Built-in heuristics (e.g. "[bot]" suffix,
+	// "gh-simili" prefix) always apply in addition to this list.
+	BotUsers []string `yaml:"bot_users,omitempty"`
 }
 
 // QdrantConfig holds Qdrant connection settings.

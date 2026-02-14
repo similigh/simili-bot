@@ -51,8 +51,9 @@ func (s *ResponseBuilder) Run(ctx *pipeline.Context) error {
 func (s *ResponseBuilder) buildTriageSummary(ctx *pipeline.Context) string {
 	var sections []string
 
-	// Header
-	sections = append(sections, "### Simili Triage Report\n")
+	// Header — includes a hidden marker used by command_handler to detect bot's own comments.
+	// The marker is an HTML comment so it survives any formatting changes to the visible title.
+	sections = append(sections, "<!-- simili-bot-report -->\n### Simili Triage Report\n")
 
 	// Quality Assessment Section
 	if qualitySection := s.buildQualitySection(ctx); qualitySection != "" {
