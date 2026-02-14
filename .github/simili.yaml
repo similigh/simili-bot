@@ -1,0 +1,18 @@
+qdrant:
+  url: "${QDRANT_URL}"
+  api_key: "${QDRANT_API_KEY}"
+  collection: "simili_bot_v1"
+
+embedding:
+  provider: "gemini"
+  api_key: "${GEMINI_API_KEY}"
+  model: "gemini-embedding-001"
+  dimensions: 3072
+
+defaults:
+  similarity_threshold: 0.70
+  max_similar_to_show: 3
+  cross_repo_search: true
+
+transfer:
+  enabled: false # Enable this if you have multiple repos set up

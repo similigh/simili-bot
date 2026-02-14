@@ -29,7 +29,7 @@ func NewEmbedder(apiKey, model string) (*Embedder, error) {
 	}
 
 	if model == "" {
-		model = "text-embedding-004" // Default to modern 768-dim model
+		model = "gemini-embedding-001" // Default to gemini-embedding-001 (3072-dim)
 	}
 
 	return &Embedder{
@@ -83,5 +83,5 @@ func (e *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32,
 
 // Dimensions returns the dimensionality of the embeddings.
 func (e *Embedder) Dimensions() int {
-	return 768 // gemini-embedding-001 produces 768-dimensional vectors
+	return 3072 // gemini-embedding-001 produces 3072-dimensional vectors
 }
