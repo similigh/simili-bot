@@ -19,6 +19,7 @@ type RetryConfig struct {
 }
 
 // DefaultRetryConfig returns sensible defaults for Gemini API retries.
+// Defaults: 5 retries, 1s base delay, 60s max delay, 25% jitter.
 func DefaultRetryConfig() RetryConfig {
 	return RetryConfig{
 		MaxRetries:  5,
@@ -79,16 +80,18 @@ func withRetry[T any](ctx context.Context, cfg RetryConfig, operation string, fn
 			return zero, fmt.Errorf("%s failed after %d retries: %w", operation, cfg.MaxRetries, err)
 		}
 
-		// Calculate delay: base * 2^attempt, capped at MaxDelay
+		// Calculate delay: base * 2^attempt
 		delay := time.Duration(float64(cfg.BaseDelay) * math.Pow(2, float64(attempt)))
-		if delay > cfg.MaxDelay {
-			delay = cfg.MaxDelay
-		}
 
 		// Add jitter to prevent thundering herd
 		if cfg.JitterRatio > 0 {
 			jitter := time.Duration(rand.Float64() * cfg.JitterRatio * float64(delay))
 			delay += jitter
+		}
+
+		// Cap after jitter so MaxDelay is respected
+		if delay > cfg.MaxDelay {
+			delay = cfg.MaxDelay
 		}
 
 		// Wait or bail if context is cancelled

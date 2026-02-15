@@ -144,6 +144,9 @@ func (l *LLMClient) generateWithRetry(ctx context.Context, model *genai.Generati
 				responseText += string(txt)
 			}
 		}
+		if strings.TrimSpace(responseText) == "" {
+			return "", fmt.Errorf("empty response from LLM")
+		}
 		return responseText, nil
 	})
 }
