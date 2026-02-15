@@ -44,22 +44,26 @@ func (e *Embedder) Close() error {
 }
 
 // Embed generates an embedding for a single text.
+// It retries on transient errors (429/5xx) with exponential backoff.
 func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
 	if text == "" {
 		return nil, fmt.Errorf("text cannot be empty")
 	}
 
-	em := e.client.EmbeddingModel(e.model)
-	res, err := em.EmbedContent(ctx, genai.Text(text))
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate embedding: %w", err)
-	}
+	cfg := DefaultRetryConfig()
+	return withRetry(ctx, cfg, "Embed", func() ([]float32, error) {
+		em := e.client.EmbeddingModel(e.model)
+		res, err := em.EmbedContent(ctx, genai.Text(text))
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate embedding: %w", err)
+		}
 
-	if res.Embedding == nil || len(res.Embedding.Values) == 0 {
-		return nil, fmt.Errorf("empty embedding returned")
-	}
+		if res.Embedding == nil || len(res.Embedding.Values) == 0 {
+			return nil, fmt.Errorf("empty embedding returned")
+		}
 
-	return res.Embedding.Values, nil
+		return res.Embedding.Values, nil
+	})
 }
 
 // EmbedBatch generates embeddings for multiple texts.
