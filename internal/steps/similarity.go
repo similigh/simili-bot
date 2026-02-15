@@ -127,7 +127,7 @@ func (s *SimilaritySearch) Run(ctx *pipeline.Context) error {
 		url, _ := res.Payload["url"].(string)
 		state, _ := res.Payload["state"].(string)
 		if state == "" {
-			state = "open" // Default
+			state = "unknown"
 		}
 
 		issue := pipeline.SimilarIssue{

@@ -262,6 +262,8 @@ func processIssue(ctx context.Context, workerID int, issue *github.Issue, gh *si
 				"text":         chunk,
 				"url":          issue.GetHTMLURL(),
 				"type":         itemType,
+				"state":        issue.GetState(),
+				"title":        issue.GetTitle(),
 			},
 		}
 	}

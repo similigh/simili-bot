@@ -43,6 +43,13 @@ func (s *Indexer) Name() string {
 	return "indexer"
 }
 
+// isStateChangeOnly returns true if this event is just a state change (closed/reopened)
+// that doesn't require re-embedding.
+func isStateChangeOnly(ctx *pipeline.Context) bool {
+	action := ctx.Issue.EventAction
+	return action == "closed" || action == "reopened"
+}
+
 // Run adds the issue to the vector database.
 func (s *Indexer) Run(ctx *pipeline.Context) error {
 	collectionName := ctx.Config.Qdrant.Collection
@@ -61,6 +68,11 @@ func (s *Indexer) Run(ctx *pipeline.Context) error {
 	if s.embedder == nil || s.store == nil {
 		log.Printf("[indexer] WARNING: Missing dependencies, skipping indexing")
 		return nil
+	}
+
+	// For close/reopen events, only update the state payload — no need to re-embed.
+	if isStateChangeOnly(ctx) {
+		return s.updateState(ctx, collectionName)
 	}
 
 	// Fetch all comment pages for richer embedding content.
@@ -134,5 +146,22 @@ func (s *Indexer) Run(ctx *pipeline.Context) error {
 	log.Printf("[indexer] Indexed issue #%d to %s", ctx.Issue.Number, collectionName)
 	ctx.Result.Indexed = true
 
+	return nil
+}
+
+// updateState patches only the "state" field in Qdrant for an existing point.
+func (s *Indexer) updateState(ctx *pipeline.Context, collectionName string) error {
+	uniqueID := fmt.Sprintf("%s-%s-%d", ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number)
+	uuidID := uuid.NewMD5(uuid.NameSpaceURL, []byte(uniqueID)).String()
+
+	err := s.store.SetPayload(ctx.Ctx, collectionName, uuidID, map[string]interface{}{
+		"state": ctx.Issue.State,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update state for issue #%d: %w", ctx.Issue.Number, err)
+	}
+
+	log.Printf("[indexer] Updated state to %q for issue #%d", ctx.Issue.State, ctx.Issue.Number)
+	ctx.Result.Indexed = true
 	return nil
 }
