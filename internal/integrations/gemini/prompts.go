@@ -105,7 +105,7 @@ func buildResponsePrompt(similar []SimilarIssueInput) string {
 			i+1, s.Number, s.Title, s.Similarity*100, status, s.URL))
 	}
 
-	return fmt.Sprintf(`You are an AI assistant helping users find related GitHub issues. 
+	return fmt.Sprintf(`You are an AI assistant helping users find related GitHub issues.
 
 The following similar issues were found:
 
@@ -310,55 +310,5 @@ ONLY set is_duplicate to true if confidence >= 0.85. When in doubt, set is_dupli
 		input.CurrentIssue.Title,
 		truncate(input.CurrentIssue.Body, 1000),
 		similarList.String(),
-	)
-}
-
-// buildPRDuplicateDetectionPrompt creates a prompt for pull request duplicate detection.
-func buildPRDuplicateDetectionPrompt(input *PRDuplicateCheckInput) string {
-	var candidateList strings.Builder
-	for i, c := range input.Candidates {
-		body := truncate(c.Body, 500)
-		fmt.Fprintf(&candidateList, "--- Candidate %d ---\n", i+1)
-		fmt.Fprintf(
-			&candidateList,
-			"ID: %s\nType: %s\nRepository: %s/%s\nNumber: #%d [%s]\nTitle: %s\nVector similarity: %.0f%%\nURL: %s\n",
-			c.ID, c.EntityType, c.Org, c.Repo, c.Number, c.State, c.Title, c.Similarity*100, c.URL,
-		)
-		if body != "" {
-			fmt.Fprintf(&candidateList, "Content:\n%s\n", body)
-		}
-		candidateList.WriteString("\n")
-	}
-
-	return fmt.Sprintf(`You are a strict duplicate detection system for GitHub pull requests.
-
-Task:
-- Determine whether the current pull request is a duplicate of any candidate issue/PR.
-- A duplicate means the change intent is effectively the same and would be resolved by one merged outcome.
-- Similar area or same component is not enough on its own.
-
-Current Pull Request:
-- Title: %s
-- Body: %s
-
-Candidate Issues/PRs:
-%s
-
-Respond with valid JSON in this exact format:
-{
-  "is_duplicate": false,
-  "duplicate_id": "",
-  "confidence": 0.0,
-  "reasoning": "Brief explanation"
-}
-
-Rules:
-- Set "duplicate_id" to one of the provided candidate IDs only when "is_duplicate" is true.
-- Use confidence range 0.0 to 1.0.
-- Only mark as duplicate if confidence >= 0.85.
-- If uncertain, return is_duplicate=false.`,
-		input.PullRequest.Title,
-		truncate(input.PullRequest.Body, 1000),
-		candidateList.String(),
 	)
 }
