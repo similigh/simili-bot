@@ -43,7 +43,7 @@ var indexCmd = &cobra.Command{
 	Use:   "index",
 	Short: "Bulk index issues into the vector database",
 	Long: `Index existing issues from a GitHub repository into the Qdrant vector database.
-It fetches issues, comments, chunks the text, generates embeddings using Gemini,
+It fetches issues, comments, chunks the text, generates embeddings using the active AI provider,
 and stores them for semantic search.
 
 Supports resuming via a local checkpoint file or --since flag.`,

@@ -20,7 +20,7 @@ This web application provides a user-friendly interface to test issue analysis w
 
 - **Go 1.21+**
 - **Environment Variables**:
-  - `GEMINI_API_KEY`: Optional AI key (preferred if both keys are set)
+  - `GEMINI_API_KEY`: Optional AI key (takes precedence when both provider keys are set)
   - `OPENAI_API_KEY`: Optional AI key (used when Gemini key is not set)
   - `QDRANT_URL`: Vector database URL (e.g., `https://xxx.qdrant.io:6334`)
   - `QDRANT_API_KEY`: Qdrant authentication key

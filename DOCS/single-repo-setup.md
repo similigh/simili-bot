@@ -14,8 +14,8 @@ This guide details the steps to integrate Simili-Bot into a standalone repositor
 
 Navigate to **Settings > Secrets and variables > Actions** in your repository and add the following secrets:
 
-- `GEMINI_API_KEY` (optional, preferred if both keys are set)
-- `OPENAI_API_KEY` (optional, used when Gemini key is not set)
+- `GEMINI_API_KEY` (optional; takes precedence when both provider keys are set)
+- `OPENAI_API_KEY` (optional; used when Gemini key is not set)
 - `QDRANT_URL`
 - `QDRANT_API_KEY`
 

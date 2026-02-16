@@ -60,7 +60,7 @@ Simili-Bot supports both **Single-Repository** and **Organization-wide** setups.
 Simili supports both Gemini and OpenAI.
 
 - Set at least one key: `GEMINI_API_KEY` or `OPENAI_API_KEY`
-- If both keys are set, Simili uses Gemini by default
+- If both keys are set, Simili uses Gemini by default (Gemini takes precedence)
 - If only one key is set, Simili uses that provider
 
 Default models:
