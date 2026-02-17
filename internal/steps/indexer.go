@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/Kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-02
+// Last Modified: 2026-02-13
 
 // Package steps provides the indexer step for adding issues to the vector database.
 package steps
@@ -9,17 +9,22 @@ package steps
 import (
 	"fmt"
 	"log"
+	"strings"
 
+	"github.com/google/go-github/v60/github"
 	"github.com/google/uuid"
 	"github.com/similigh/simili-bot/internal/core/pipeline"
 	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	similiGithub "github.com/similigh/simili-bot/internal/integrations/github"
 	"github.com/similigh/simili-bot/internal/integrations/qdrant"
+	"github.com/similigh/simili-bot/internal/utils/text"
 )
 
 // Indexer adds/updates the issue in the vector database.
 type Indexer struct {
 	embedder *gemini.Embedder
 	store    qdrant.VectorStore
+	github   *similiGithub.Client
 	dryRun   bool
 }
 
@@ -28,6 +33,7 @@ func NewIndexer(deps *pipeline.Dependencies) *Indexer {
 	return &Indexer{
 		embedder: deps.Embedder,
 		store:    deps.VectorStore,
+		github:   deps.GitHub,
 		dryRun:   deps.DryRun,
 	}
 }
@@ -35,6 +41,13 @@ func NewIndexer(deps *pipeline.Dependencies) *Indexer {
 // Name returns the step name.
 func (s *Indexer) Name() string {
 	return "indexer"
+}
+
+// isStateChangeOnly returns true if this event is just a state change (closed/reopened)
+// that doesn't require re-embedding.
+func isStateChangeOnly(ctx *pipeline.Context) bool {
+	action := ctx.Issue.EventAction
+	return action == "closed" || action == "reopened"
 }
 
 // Run adds the issue to the vector database.
@@ -57,13 +70,50 @@ func (s *Indexer) Run(ctx *pipeline.Context) error {
 		return nil
 	}
 
+	// For close/reopen events, only update the state payload — no need to re-embed.
+	if isStateChangeOnly(ctx) {
+		return s.updateState(ctx, collectionName)
+	}
+
+	// Fetch all comment pages for richer embedding content.
+	var textComments []text.Comment
+	if s.github != nil {
+		page := 1
+		for {
+			ghComments, resp, err := s.github.ListComments(ctx.Ctx, ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number, &github.IssueListCommentsOptions{
+				ListOptions: github.ListOptions{PerPage: 100, Page: page},
+			})
+			if err != nil {
+				log.Printf("[indexer] WARNING: failed to fetch comments for #%d: %v", ctx.Issue.Number, err)
+				break
+			}
+			for _, c := range ghComments {
+				author := "deleted-user"
+				if c.User != nil {
+					author = c.User.GetLogin()
+				}
+				textComments = append(textComments, text.Comment{Author: author, Body: strings.TrimSpace(c.GetBody())})
+			}
+			if resp == nil || resp.NextPage == 0 {
+				break
+			}
+			page = resp.NextPage
+		}
+	}
+
 	// Create content for embedding
-	content := fmt.Sprintf("%s\n\n%s", ctx.Issue.Title, ctx.Issue.Body)
+	content := text.BuildEmbeddingContent(ctx.Issue.Title, ctx.Issue.Body, textComments)
 
 	// Generate embedding
 	embedding, err := s.embedder.Embed(ctx.Ctx, content)
 	if err != nil {
 		return fmt.Errorf("failed to generate embedding: %w", err)
+	}
+
+	// Resolve canonical item type for downstream consumers.
+	itemType := "issue"
+	if ctx.Issue.EventType == "pull_request" || ctx.Issue.EventType == "pr_comment" {
+		itemType = "pull_request"
 	}
 
 	// Generate deterministic UUID
@@ -74,7 +124,7 @@ func (s *Indexer) Run(ctx *pipeline.Context) error {
 	point := &qdrant.Point{
 		ID:     uuidID,
 		Vector: embedding,
-		Payload: map[string]interface{}{
+		Payload: map[string]any{
 			"org":    ctx.Issue.Org,
 			"repo":   ctx.Issue.Repo,
 			"number": ctx.Issue.Number,
@@ -83,6 +133,7 @@ func (s *Indexer) Run(ctx *pipeline.Context) error {
 			"state":  ctx.Issue.State,
 			"author": ctx.Issue.Author,
 			"labels": ctx.Issue.Labels,
+			"type":   itemType,
 		},
 	}
 
@@ -95,5 +146,22 @@ func (s *Indexer) Run(ctx *pipeline.Context) error {
 	log.Printf("[indexer] Indexed issue #%d to %s", ctx.Issue.Number, collectionName)
 	ctx.Result.Indexed = true
 
+	return nil
+}
+
+// updateState patches only the "state" field in Qdrant for an existing point.
+func (s *Indexer) updateState(ctx *pipeline.Context, collectionName string) error {
+	uniqueID := fmt.Sprintf("%s-%s-%d", ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number)
+	uuidID := uuid.NewMD5(uuid.NameSpaceURL, []byte(uniqueID)).String()
+
+	err := s.store.SetPayload(ctx.Ctx, collectionName, uuidID, map[string]interface{}{
+		"state": ctx.Issue.State,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update state for issue #%d: %w", ctx.Issue.Number, err)
+	}
+
+	log.Printf("[indexer] Updated state to %q for issue #%d", ctx.Issue.State, ctx.Issue.Number)
+	ctx.Result.Indexed = true
 	return nil
 }

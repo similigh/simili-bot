@@ -26,6 +26,9 @@ type Config struct {
 	// Embedding configures the embedding provider.
 	Embedding EmbeddingConfig `yaml:"embedding"`
 
+	// LLM configures the LLM provider.
+	LLM LLMConfig `yaml:"llm"`
+
 	// Workflow is a preset workflow name (e.g., "issue-triage").
 	Workflow string `yaml:"workflow,omitempty"`
 
@@ -40,6 +43,11 @@ type Config struct {
 
 	// Transfer configures cross-repository issue routing.
 	Transfer TransferConfig `yaml:"transfer,omitempty"`
+
+	// BotUsers is a list of GitHub usernames whose events should be ignored
+	// to prevent infinite comment loops. Built-in heuristics (e.g. "[bot]" suffix,
+	// "gh-simili" prefix) always apply in addition to this list.
+	BotUsers []string `yaml:"bot_users,omitempty"`
 }
 
 // QdrantConfig holds Qdrant connection settings.
@@ -55,6 +63,14 @@ type EmbeddingConfig struct {
 	APIKey     string `yaml:"api_key"`
 	Model      string `yaml:"model,omitempty"`
 	Dimensions int    `yaml:"dimensions,omitempty"`
+}
+
+// LLMConfig holds LLM provider settings.
+type LLMConfig struct {
+	Provider    string   `yaml:"provider"`
+	APIKey      string   `yaml:"api_key"`
+	Model       string   `yaml:"model,omitempty"`
+	Temperature *float64 `yaml:"temperature,omitempty"`
 }
 
 // DefaultsConfig holds default behavior settings.
@@ -207,6 +223,12 @@ func (c *Config) applyDefaults() {
 	if c.Embedding.Dimensions == 0 {
 		c.Embedding.Dimensions = 768
 	}
+	if c.LLM.Provider == "" {
+		c.LLM.Provider = "gemini"
+	}
+	if c.LLM.Model == "" {
+		c.LLM.Model = "gemini-2.5-flash"
+	}
 	// Transfer defaults
 	if c.Transfer.Enabled == nil {
 		f := false
@@ -263,6 +285,20 @@ func mergeConfigs(parent, child *Config) *Config {
 	}
 	if child.Embedding.Model != "" {
 		result.Embedding.Model = child.Embedding.Model
+	}
+
+	// LLM: override if any field is set
+	if child.LLM.Provider != "" {
+		result.LLM.Provider = child.LLM.Provider
+	}
+	if child.LLM.APIKey != "" {
+		result.LLM.APIKey = child.LLM.APIKey
+	}
+	if child.LLM.Model != "" {
+		result.LLM.Model = child.LLM.Model
+	}
+	if child.LLM.Temperature != nil {
+		result.LLM.Temperature = child.LLM.Temperature
 	}
 
 	// Defaults: override if non-zero

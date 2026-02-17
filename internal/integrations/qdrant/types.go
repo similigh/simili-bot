@@ -40,6 +40,9 @@ type VectorStore interface {
 	// Delete removes a point by ID.
 	Delete(ctx context.Context, collectionName string, id string) error
 
+	// SetPayload updates payload fields on existing points without re-uploading vectors.
+	SetPayload(ctx context.Context, collectionName string, id string, payload map[string]interface{}) error
+
 	// Close closes the connection to the database.
 	Close() error
 }

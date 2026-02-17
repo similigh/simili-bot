@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/Kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-02
+// Last Modified: 2026-02-13
 
 package commands
 
@@ -25,11 +25,12 @@ import (
 )
 
 var (
-	indexRepo    string
-	indexSince   string // Can be a timestamp (ISO8601) or issue number (int)
-	indexWorkers int
-	indexToken   string
-	indexDryRun  bool
+	indexRepo       string
+	indexSince      string // Can be a timestamp (ISO8601) or issue number (int)
+	indexWorkers    int
+	indexToken      string
+	indexDryRun     bool
+	indexIncludePRs bool
 )
 
 type Checkpoint struct {
@@ -57,6 +58,7 @@ func init() {
 	indexCmd.Flags().IntVar(&indexWorkers, "workers", 5, "Number of concurrent workers")
 	indexCmd.Flags().StringVar(&indexToken, "token", "", "GitHub token (optional, defaults to GITHUB_TOKEN env var)")
 	indexCmd.Flags().BoolVar(&indexDryRun, "dry-run", false, "Simulate indexing without writing to DB")
+	indexCmd.Flags().BoolVar(&indexIncludePRs, "include-prs", true, "Include pull requests in indexing")
 
 	if err := indexCmd.MarkFlagRequired("repo"); err != nil {
 		log.Fatalf("Failed to mark repo flag as required: %v", err)
@@ -175,8 +177,8 @@ func runIndex(cmd *cobra.Command, args []string) {
 		log.Printf("Fetched page %d (%d issues)", page, len(issues))
 
 		for _, issue := range issues {
-			if issue.IsPullRequest() {
-				continue // Skip PRs
+			if !indexIncludePRs && issue.IsPullRequest() {
+				continue
 			}
 			jobs <- Job{Issue: issue}
 		}
@@ -212,32 +214,19 @@ func processIssue(ctx context.Context, workerID int, issue *github.Issue, gh *si
 	}
 
 	// 2. Aggregate Text
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Title: %s\n\n", issue.GetTitle()))
-
-	issueBody := strings.TrimSpace(issue.GetBody())
-	if issueBody != "" {
-		sb.WriteString(fmt.Sprintf("Body: %s\n\n", issueBody))
-	}
-
-	hasCommentContent := false
+	comments := make([]text.Comment, 0, len(allComments))
 	for _, c := range allComments {
-		commentBody := strings.TrimSpace(c.GetBody())
-		if commentBody == "" {
+		body := strings.TrimSpace(c.GetBody())
+		if body == "" {
 			continue
-		}
-		if !hasCommentContent {
-			sb.WriteString("Comments:\n")
-			hasCommentContent = true
 		}
 		author := "deleted-user"
 		if c.User != nil {
 			author = c.User.GetLogin()
 		}
-		sb.WriteString(fmt.Sprintf("- %s: %s\n", author, commentBody))
+		comments = append(comments, text.Comment{Author: author, Body: body})
 	}
-
-	fullText := sb.String()
+	fullText := text.BuildEmbeddingContent(issue.GetTitle(), issue.GetBody(), comments)
 
 	// 3. Chunk
 	chunks := splitter.SplitText(fullText)
@@ -255,18 +244,26 @@ func processIssue(ctx context.Context, workerID int, issue *github.Issue, gh *si
 		return
 	}
 
+	itemType := "issue"
+	if issue.IsPullRequest() {
+		itemType = "pull_request"
+	}
+
 	points := make([]*qdrant.Point, len(chunks))
 	for i, chunk := range chunks {
+		chunkID := uuid.NewMD5(uuid.NameSpaceURL, fmt.Appendf(nil, "%s/%s#%d-chunk-%d", org, repo, issue.GetNumber(), i)).String()
 		points[i] = &qdrant.Point{
-			ID:     uuid.New().String(),
+			ID:     chunkID,
 			Vector: embeddings[i],
-			Payload: map[string]interface{}{
+			Payload: map[string]any{
 				"org":          org,
 				"repo":         repo,
 				"issue_number": issue.GetNumber(),
 				"text":         chunk,
 				"url":          issue.GetHTMLURL(),
-				"type":         "issue",
+				"type":         itemType,
+				"state":        issue.GetState(),
+				"title":        issue.GetTitle(),
 			},
 		}
 	}

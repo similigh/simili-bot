@@ -102,16 +102,20 @@ type DuplicateResult struct {
 }
 
 // NewLLMClient creates a new Gemini LLM client.
-func NewLLMClient(apiKey string) (*LLMClient, error) {
+func NewLLMClient(apiKey, model string) (*LLMClient, error) {
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
 	}
 
+	if model == "" {
+		model = "gemini-2.5-flash" // Fast and cost-effective
+	}
+
 	return &LLMClient{
 		client: client,
-		model:  "gemini-2.0-flash-lite", // Fast and cost-effective
+		model:  model,
 	}, nil
 }
 
@@ -120,33 +124,47 @@ func (l *LLMClient) Close() error {
 	return l.client.Close()
 }
 
+// generateWithRetry wraps a GenerateContent call with exponential backoff
+// for transient errors (429/5xx). It extracts the text from the response.
+func (l *LLMClient) generateWithRetry(ctx context.Context, model *genai.GenerativeModel, prompt string, operation string) (string, error) {
+	cfg := DefaultRetryConfig()
+	return withRetry(ctx, cfg, operation, func() (string, error) {
+		resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+		if err != nil {
+			return "", err
+		}
+
+		if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+			return "", fmt.Errorf("empty response from LLM")
+		}
+
+		var responseText string
+		for _, part := range resp.Candidates[0].Content.Parts {
+			if txt, ok := part.(genai.Text); ok {
+				responseText += string(txt)
+			}
+		}
+		if strings.TrimSpace(responseText) == "" {
+			return "", fmt.Errorf("empty response from LLM")
+		}
+		return responseText, nil
+	})
+}
+
 // AnalyzeIssue performs triage analysis on an issue.
+// It retries on transient errors (429/5xx) with exponential backoff.
 func (l *LLMClient) AnalyzeIssue(ctx context.Context, issue *IssueInput) (*TriageResult, error) {
 	prompt := buildTriagePromptJSON(issue)
 
 	model := l.client.GenerativeModel(l.model)
-	model.SetTemperature(0.3) // Lower temperature for more consistent results
-	// Request JSON response for structured parsing
+	model.SetTemperature(0.3)
 	model.ResponseMIMEType = "application/json"
 
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	responseText, err := l.generateWithRetry(ctx, model, prompt, "AnalyzeIssue")
 	if err != nil {
 		return nil, fmt.Errorf("failed to analyze issue: %w", err)
 	}
 
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return nil, fmt.Errorf("empty response from LLM")
-	}
-
-	// Extract text from response
-	var responseText string
-	for _, part := range resp.Candidates[0].Content.Parts {
-		if txt, ok := part.(genai.Text); ok {
-			responseText += string(txt)
-		}
-	}
-
-	// Parse JSON response into TriageResult
 	result, err := parseTriageResponseJSON(responseText)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse LLM response: %w", err)
@@ -155,6 +173,7 @@ func (l *LLMClient) AnalyzeIssue(ctx context.Context, issue *IssueInput) (*Triag
 }
 
 // GenerateResponse creates a comment for similar issues.
+// It retries on transient errors (429/5xx) with exponential backoff.
 func (l *LLMClient) GenerateResponse(ctx context.Context, similar []SimilarIssueInput) (string, error) {
 	if len(similar) == 0 {
 		return "", nil
@@ -163,29 +182,18 @@ func (l *LLMClient) GenerateResponse(ctx context.Context, similar []SimilarIssue
 	prompt := buildResponsePrompt(similar)
 
 	model := l.client.GenerativeModel(l.model)
-	model.SetTemperature(0.5) // Slightly higher for more natural language
+	model.SetTemperature(0.5)
 
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	responseText, err := l.generateWithRetry(ctx, model, prompt, "GenerateResponse")
 	if err != nil {
 		return "", fmt.Errorf("failed to generate response: %w", err)
-	}
-
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("empty response from LLM")
-	}
-
-	// Extract text from response
-	var responseText string
-	for _, part := range resp.Candidates[0].Content.Parts {
-		if txt, ok := part.(genai.Text); ok {
-			responseText += string(txt)
-		}
 	}
 
 	return strings.TrimSpace(responseText), nil
 }
 
 // RouteIssue analyzes issue intent and ranks repositories by relevance.
+// It retries on transient errors (429/5xx) with exponential backoff.
 func (l *LLMClient) RouteIssue(ctx context.Context, input *RouteIssueInput) (*RouterResult, error) {
 	if len(input.Repositories) == 0 {
 		return &RouterResult{Rankings: []RepositoryRanking{}, BestMatch: nil}, nil
@@ -197,20 +205,9 @@ func (l *LLMClient) RouteIssue(ctx context.Context, input *RouteIssueInput) (*Ro
 	model.SetTemperature(0.3)
 	model.ResponseMIMEType = "application/json"
 
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	responseText, err := l.generateWithRetry(ctx, model, prompt, "RouteIssue")
 	if err != nil {
 		return nil, fmt.Errorf("failed to route issue: %w", err)
-	}
-
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return nil, fmt.Errorf("empty response from LLM")
-	}
-
-	var responseText string
-	for _, part := range resp.Candidates[0].Content.Parts {
-		if txt, ok := part.(genai.Text); ok {
-			responseText += string(txt)
-		}
 	}
 
 	var result struct {
@@ -240,6 +237,7 @@ func (l *LLMClient) RouteIssue(ctx context.Context, input *RouteIssueInput) (*Ro
 }
 
 // AssessQuality evaluates issue completeness and clarity.
+// It retries on transient errors (429/5xx) with exponential backoff.
 func (l *LLMClient) AssessQuality(ctx context.Context, issue *IssueInput) (*QualityResult, error) {
 	prompt := buildQualityAssessmentPrompt(issue)
 
@@ -247,20 +245,9 @@ func (l *LLMClient) AssessQuality(ctx context.Context, issue *IssueInput) (*Qual
 	model.SetTemperature(0.3)
 	model.ResponseMIMEType = "application/json"
 
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	responseText, err := l.generateWithRetry(ctx, model, prompt, "AssessQuality")
 	if err != nil {
 		return nil, fmt.Errorf("failed to assess quality: %w", err)
-	}
-
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return nil, fmt.Errorf("empty response from LLM")
-	}
-
-	var responseText string
-	for _, part := range resp.Candidates[0].Content.Parts {
-		if txt, ok := part.(genai.Text); ok {
-			responseText += string(txt)
-		}
 	}
 
 	var result QualityResult
@@ -288,6 +275,7 @@ func (l *LLMClient) AssessQuality(ctx context.Context, issue *IssueInput) (*Qual
 }
 
 // DetectDuplicate analyzes semantic similarity for duplicate detection.
+// It retries on transient errors (429/5xx) with exponential backoff.
 func (l *LLMClient) DetectDuplicate(ctx context.Context, input *DuplicateCheckInput) (*DuplicateResult, error) {
 	if len(input.SimilarIssues) == 0 {
 		return &DuplicateResult{IsDuplicate: false, SimilarIssues: json.RawMessage("[]")}, nil
@@ -299,20 +287,9 @@ func (l *LLMClient) DetectDuplicate(ctx context.Context, input *DuplicateCheckIn
 	model.SetTemperature(0.3)
 	model.ResponseMIMEType = "application/json"
 
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	responseText, err := l.generateWithRetry(ctx, model, prompt, "DetectDuplicate")
 	if err != nil {
 		return nil, fmt.Errorf("failed to detect duplicate: %w", err)
-	}
-
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return nil, fmt.Errorf("empty response from LLM")
-	}
-
-	var responseText string
-	for _, part := range resp.Candidates[0].Content.Parts {
-		if txt, ok := part.(genai.Text); ok {
-			responseText += string(txt)
-		}
 	}
 
 	var result DuplicateResult

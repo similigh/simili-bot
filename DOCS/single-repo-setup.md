@@ -20,6 +20,8 @@ Navigate to **Settings > Secrets and variables > Actions** in your repository an
 
 Create a file named `.github/simili.yaml` in your repository root.
 
+The config should include both `embedding` and `llm` sections (LLM defaults to `gemini-2.0-flash-lite` if omitted).
+
 [View Example Configuration](./examples/single-repo/simili.yaml)
 
 ## Step 3: Create Workflow

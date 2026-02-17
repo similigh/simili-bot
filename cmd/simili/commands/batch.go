@@ -27,15 +27,15 @@ import (
 )
 
 var (
-	batchFile              string
-	batchOutFile           string
-	batchFormat            string
-	batchWorkers           int
-	batchWorkflow          string
-	batchCollection        string
-	batchThreshold         float64
-	batchDuplicateThresh   float64
-	batchTopK              int
+	batchFile            string
+	batchOutFile         string
+	batchFormat          string
+	batchWorkers         int
+	batchWorkflow        string
+	batchCollection      string
+	batchThreshold       float64
+	batchDuplicateThresh float64
+	batchTopK            int
 )
 
 // BatchJob represents a job to process in the worker pool
@@ -338,14 +338,22 @@ func initializeDependencies(cfg *config.Config) (*pipeline.Dependencies, error) 
 	}
 
 	// Initialize LLM Client
-	if geminiKey != "" {
-		llm, err := gemini.NewLLMClient(geminiKey)
+	llmKey := cfg.LLM.APIKey
+	if llmKey == "" {
+		llmKey = geminiKey // fall back to embedding key
+	}
+	llmModel := cfg.LLM.Model
+	if envModel := os.Getenv("LLM_MODEL"); envModel != "" {
+		llmModel = envModel
+	}
+	if llmKey != "" {
+		llm, err := gemini.NewLLMClient(llmKey, llmModel)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize Gemini LLM client: %w", err)
 		}
 		deps.LLMClient = llm
 		if verbose {
-			fmt.Println("✓ Initialized Gemini LLM client")
+			fmt.Printf("✓ Initialized Gemini LLM client with model: %s\n", llmModel)
 		}
 	}
 

@@ -27,6 +27,62 @@ func TestConfigDefaults(t *testing.T) {
 	}
 }
 
+func TestLLMConfigDefaults(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+
+	if cfg.LLM.Provider != "gemini" {
+		t.Errorf("Expected LLM.Provider to be 'gemini', got %s", cfg.LLM.Provider)
+	}
+	if cfg.LLM.Model != "gemini-2.5-flash" {
+		t.Errorf("Expected LLM.Model to be 'gemini-2.5-flash', got %s", cfg.LLM.Model)
+	}
+}
+
+func TestMergeConfigsLLM(t *testing.T) {
+	parent := &Config{}
+	parent.applyDefaults()
+
+	child := &Config{
+		LLM: LLMConfig{
+			Model: "gemini-2.0-flash",
+		},
+	}
+
+	merged := mergeConfigs(parent, child)
+	if merged.LLM.Model != "gemini-2.0-flash" {
+		t.Errorf("Expected merged LLM.Model to be 'gemini-2.0-flash', got %s", merged.LLM.Model)
+	}
+	if merged.LLM.Provider != "gemini" {
+		t.Errorf("Expected merged LLM.Provider to be 'gemini', got %s", merged.LLM.Provider)
+	}
+}
+
+func TestLoadConfigWithLLM(t *testing.T) {
+	yamlContent := `
+qdrant:
+  url: "http://localhost:6334"
+  collection: "test"
+embedding:
+  provider: gemini
+llm:
+  provider: gemini
+  model: gemini-2.5-flash
+defaults:
+  similarity_threshold: 0.7
+`
+	cfg, err := parseRaw([]byte(yamlContent))
+	if err != nil {
+		t.Fatalf("Failed to parse YAML: %v", err)
+	}
+	if cfg.LLM.Model != "gemini-2.5-flash" {
+		t.Errorf("Expected LLM.Model 'gemini-2.5-flash', got '%s'", cfg.LLM.Model)
+	}
+	if cfg.LLM.Provider != "gemini" {
+		t.Errorf("Expected LLM.Provider 'gemini', got '%s'", cfg.LLM.Provider)
+	}
+}
+
 // TestParseExtendsRef verifies extends reference parsing.
 func TestParseExtendsRef(t *testing.T) {
 	tests := []struct {

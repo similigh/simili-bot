@@ -51,8 +51,9 @@ func (s *ResponseBuilder) Run(ctx *pipeline.Context) error {
 func (s *ResponseBuilder) buildTriageSummary(ctx *pipeline.Context) string {
 	var sections []string
 
-	// Header
-	sections = append(sections, "### Simili Triage Report\n")
+	// Header — includes a hidden marker used by command_handler to detect bot's own comments.
+	// The marker is an HTML comment so it survives any formatting changes to the visible title.
+	sections = append(sections, "<!-- simili-bot-report -->\n### Simili Triage Report\n")
 
 	// Quality Assessment Section
 	if qualitySection := s.buildQualitySection(ctx); qualitySection != "" {
@@ -234,9 +235,14 @@ func (s *ResponseBuilder) buildSimilarSection(ctx *pipeline.Context) string {
 	parts = append(parts, "| :--- | :--- | :--- |")
 
 	for _, similar := range ctx.SimilarIssues {
-		status := "Open"
-		if similar.State == "closed" {
+		var status string
+		switch similar.State {
+		case "closed":
 			status = "Closed"
+		case "open":
+			status = "Open"
+		default:
+			status = "—"
 		}
 
 		// Truncate title if too long (UTF-8 safe)

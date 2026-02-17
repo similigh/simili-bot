@@ -9,6 +9,7 @@ package steps
 
 import (
 	"log"
+	"strings"
 	"time"
 
 	"github.com/similigh/simili-bot/internal/core/config"
@@ -38,6 +39,18 @@ func (s *Gatekeeper) Run(ctx *pipeline.Context) error {
 	// Debug logging to understand what events we receive
 	log.Printf("[gatekeeper] DEBUG: Issue #%d, EventType=%q, EventAction=%q, Repo=%s/%s",
 		ctx.Issue.Number, ctx.Issue.EventType, ctx.Issue.EventAction, ctx.Issue.Org, ctx.Issue.Repo)
+
+	// Early exit: skip events triggered by bot authors to prevent infinite loops.
+	// This catches cases where the bot's own comment triggers a new workflow run.
+	if ctx.Issue.CommentAuthor != "" {
+		author := ctx.Issue.CommentAuthor
+		if isBotAuthor(author, ctx.Config.BotUsers) {
+			log.Printf("[gatekeeper] Skipping event from bot author %q", author)
+			ctx.Result.Skipped = true
+			ctx.Result.SkipReason = "event triggered by bot"
+			return pipeline.ErrSkipPipeline
+		}
+	}
 
 	// Skip triage for transferred issues (they were already triaged in source repo)
 	if ctx.Issue.EventAction == "transferred" {
@@ -82,6 +95,24 @@ func (s *Gatekeeper) Run(ctx *pipeline.Context) error {
 
 	log.Printf("[gatekeeper] Repository %s/%s is enabled, proceeding", ctx.Issue.Org, ctx.Issue.Repo)
 	return nil
+}
+
+// isBotAuthor returns true if the given username matches a known bot pattern
+// or is in the user-configured bot_users list.
+func isBotAuthor(author string, configBotUsers []string) bool {
+	// Built-in heuristics
+	if strings.HasSuffix(author, "[bot]") ||
+		strings.HasPrefix(author, "gh-simili") ||
+		strings.EqualFold(author, "simili-bot") {
+		return true
+	}
+	// User-configured bot users
+	for _, u := range configBotUsers {
+		if strings.EqualFold(author, u) {
+			return true
+		}
+	}
+	return false
 }
 
 // findRepoConfig looks up the repository configuration.

@@ -17,6 +17,8 @@ Create a public repository (or private, if using GitHub Enterprise/Organization 
 ### 2. Configuration File
 Create a `.github/simili.yaml` file in your central repository. This file will define the organization-wide settings.
 
+Include both `embedding` and `llm` sections so model selection is explicit and centrally managed.
+
 [View Example Configuration](./examples/multi-repo/simili.yaml)
 
 ### 3. Reusable Workflow

@@ -97,9 +97,9 @@ Reasoning: [your analysis]`,
 func buildResponsePrompt(similar []SimilarIssueInput) string {
 	var issueList strings.Builder
 	for i, s := range similar {
-		status := "open"
-		if s.State == "closed" {
-			status = "closed"
+		status := s.State
+		if status == "" || status == "unknown" {
+			status = "unknown"
 		}
 		issueList.WriteString(fmt.Sprintf("%d. #%d: %s (%.0f%% similar, %s)\n   %s\n",
 			i+1, s.Number, s.Title, s.Similarity*100, status, s.URL))
