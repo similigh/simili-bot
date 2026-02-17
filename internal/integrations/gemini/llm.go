@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/Kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-05
+// Last Modified: 2026-02-17
 
 package gemini
 
@@ -17,8 +17,9 @@ import (
 
 // LLMClient provides LLM-based analysis using Gemini.
 type LLMClient struct {
-	client *genai.Client
-	model  string
+	client      *genai.Client
+	model       string
+	retryConfig RetryConfig
 }
 
 // IssueInput represents the issue data needed for analysis.
@@ -114,8 +115,9 @@ func NewLLMClient(apiKey, model string) (*LLMClient, error) {
 	}
 
 	return &LLMClient{
-		client: client,
-		model:  model,
+		client:      client,
+		model:       model,
+		retryConfig: DefaultRetryConfig(),
 	}, nil
 }
 
@@ -127,8 +129,7 @@ func (l *LLMClient) Close() error {
 // generateWithRetry wraps a GenerateContent call with exponential backoff
 // for transient errors (429/5xx). It extracts the text from the response.
 func (l *LLMClient) generateWithRetry(ctx context.Context, model *genai.GenerativeModel, prompt string, operation string) (string, error) {
-	cfg := DefaultRetryConfig()
-	return withRetry(ctx, cfg, operation, func() (string, error) {
+	return withRetry(ctx, l.retryConfig, operation, func() (string, error) {
 		resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 		if err != nil {
 			return "", err

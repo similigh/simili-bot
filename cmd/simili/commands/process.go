@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-02
+// Last Modified: 2026-02-17
 
 package commands
 
@@ -385,6 +385,18 @@ func enrichIssueFromGitHubEvent(issue *pipeline.Issue, raw map[string]interface{
 
 	if issue.EventType == "" {
 		issue.EventType = os.Getenv("GITHUB_EVENT_NAME")
+	}
+
+	// Fall back to sender.login so the gatekeeper can filter bot-triggered
+	// pull_request.edited (and similar) events, not just issue_comment events.
+	// CommentAuthor is already set for issue_comment events; for all other event
+	// types it remains empty and the gatekeeper's bot-author check is skipped.
+	if issue.CommentAuthor == "" {
+		if sender, ok := raw["sender"].(map[string]interface{}); ok {
+			if login, ok := sender["login"].(string); ok {
+				issue.CommentAuthor = login
+			}
+		}
 	}
 }
 
