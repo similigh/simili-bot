@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/Kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-02
+// Last Modified: 2026-02-17
 
 // Package gemini provides Gemini AI integration for embeddings and LLM.
 package gemini
@@ -16,8 +16,9 @@ import (
 
 // Embedder generates embeddings using Gemini.
 type Embedder struct {
-	client *genai.Client
-	model  string
+	client      *genai.Client
+	model       string
+	retryConfig RetryConfig
 }
 
 // NewEmbedder creates a new Gemini embedder.
@@ -33,8 +34,9 @@ func NewEmbedder(apiKey, model string) (*Embedder, error) {
 	}
 
 	return &Embedder{
-		client: client,
-		model:  model,
+		client:      client,
+		model:       model,
+		retryConfig: DefaultRetryConfig(),
 	}, nil
 }
 
@@ -50,8 +52,7 @@ func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
 		return nil, fmt.Errorf("text cannot be empty")
 	}
 
-	cfg := DefaultRetryConfig()
-	return withRetry(ctx, cfg, "Embed", func() ([]float32, error) {
+	return withRetry(ctx, e.retryConfig, "Embed", func() ([]float32, error) {
 		em := e.client.EmbeddingModel(e.model)
 		res, err := em.EmbedContent(ctx, genai.Text(text))
 		if err != nil {
