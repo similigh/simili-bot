@@ -1,3 +1,8 @@
+// Author: Kaviru Hapuarachchi
+// GitHub: https://github.com/Kavirubc
+// Created: 2026-02-15
+// Last Modified: 2026-02-17
+
 package gemini
 
 import (
@@ -5,6 +10,10 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"google.golang.org/api/googleapi"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestIsRetryableError(t *testing.T) {
@@ -14,17 +23,17 @@ func TestIsRetryableError(t *testing.T) {
 		expected bool
 	}{
 		{"nil error", nil, false},
-		{"rate limit 429", errors.New("googleapi: Error 429: Resource exhausted"), true},
-		{"ResourceExhausted gRPC", errors.New("rpc error: code = ResourceExhausted"), true},
-		{"server error 500", errors.New("googleapi: Error 500: Internal Server Error"), true},
-		{"bad gateway 502", errors.New("HTTP 502: Bad Gateway"), true},
-		{"unavailable 503", errors.New("googleapi: Error 503: Service Unavailable"), true},
-		{"gateway timeout 504", errors.New("HTTP 504: Gateway Timeout"), true},
-		{"Unavailable keyword", errors.New("rpc error: code = Unavailable"), true},
-		{"Internal keyword", errors.New("rpc error: code = Internal"), true},
-		{"client error 400", errors.New("googleapi: Error 400: Bad Request"), false},
-		{"forbidden 403", errors.New("googleapi: Error 403: Forbidden"), false},
-		{"not found 404", errors.New("googleapi: Error 404: Not Found"), false},
+		{"rate limit 429", &googleapi.Error{Code: 429, Message: "Resource exhausted"}, true},
+		{"ResourceExhausted gRPC", status.New(codes.ResourceExhausted, "resource exhausted").Err(), true},
+		{"server error 500", &googleapi.Error{Code: 500, Message: "Internal Server Error"}, true},
+		{"bad gateway 502", &googleapi.Error{Code: 502, Message: "Bad Gateway"}, true},
+		{"unavailable 503", &googleapi.Error{Code: 503, Message: "Service Unavailable"}, true},
+		{"gateway timeout 504", &googleapi.Error{Code: 504, Message: "Gateway Timeout"}, true},
+		{"Unavailable gRPC", status.New(codes.Unavailable, "service unavailable").Err(), true},
+		{"Internal gRPC", status.New(codes.Internal, "internal error").Err(), true},
+		{"client error 400", &googleapi.Error{Code: 400, Message: "Bad Request"}, false},
+		{"forbidden 403", &googleapi.Error{Code: 403, Message: "Forbidden"}, false},
+		{"not found 404", &googleapi.Error{Code: 404, Message: "Not Found"}, false},
 		{"generic error", errors.New("something went wrong"), false},
 		{"empty text error", errors.New("text cannot be empty"), false},
 	}
@@ -66,7 +75,7 @@ func TestWithRetry_SuccessAfterRetries(t *testing.T) {
 	result, err := withRetry(context.Background(), cfg, "test", func() (string, error) {
 		calls++
 		if calls < 3 {
-			return "", errors.New("googleapi: Error 429: Rate limited")
+			return "", &googleapi.Error{Code: 429, Message: "Rate limited"}
 		}
 		return "ok", nil
 	})
@@ -88,7 +97,7 @@ func TestWithRetry_NonRetryableError(t *testing.T) {
 	calls := 0
 	_, err := withRetry(context.Background(), cfg, "test", func() (string, error) {
 		calls++
-		return "", errors.New("googleapi: Error 400: Bad Request")
+		return "", &googleapi.Error{Code: 400, Message: "Bad Request"}
 	})
 
 	if err == nil {
@@ -105,7 +114,7 @@ func TestWithRetry_ExhaustedRetries(t *testing.T) {
 	calls := 0
 	_, err := withRetry(context.Background(), cfg, "test-op", func() (string, error) {
 		calls++
-		return "", errors.New("googleapi: Error 503: Service Unavailable")
+		return "", &googleapi.Error{Code: 503, Message: "Service Unavailable"}
 	})
 
 	if err == nil {
@@ -129,7 +138,7 @@ func TestWithRetry_ContextCancelled(t *testing.T) {
 
 	_, err := withRetry(ctx, cfg, "test", func() (string, error) {
 		calls++
-		return "", errors.New("googleapi: Error 429: Rate limited")
+		return "", &googleapi.Error{Code: 429, Message: "Rate limited"}
 	})
 
 	if err == nil {
