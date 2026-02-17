@@ -114,13 +114,8 @@ func initDependencies(cfg *config.Config) (*pipeline.Dependencies, error) {
 		DryRun: true, // Always dry-run for web UI
 	}
 
-	// Gemini Embedder
-	geminiKey := os.Getenv("GEMINI_API_KEY")
-	if geminiKey == "" {
-		return nil, fmt.Errorf("GEMINI_API_KEY is required")
-	}
-
-	embedder, err := gemini.NewEmbedder(geminiKey, cfg.Embedding.Model)
+	// Embedder (Gemini/OpenAI auto-selected by available keys)
+	embedder, err := gemini.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init embedder: %w", err)
 	}
@@ -147,16 +142,15 @@ func initDependencies(cfg *config.Config) (*pipeline.Dependencies, error) {
 		deps.GitHub = github.NewClient(context.Background(), token)
 	}
 
-	// LLM Client
+	// LLM Client (Gemini/OpenAI auto-selected by available keys)
 	llmKey := cfg.LLM.APIKey
 	if llmKey == "" {
-		llmKey = geminiKey // fall back to embedding key
+		llmKey = cfg.Embedding.APIKey
 	}
 	llmModel := cfg.LLM.Model
 	if envModel := os.Getenv("LLM_MODEL"); envModel != "" {
 		llmModel = envModel
 	}
-
 	llm, err := gemini.NewLLMClient(llmKey, llmModel)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init LLM: %w", err)

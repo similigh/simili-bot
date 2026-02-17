@@ -55,6 +55,26 @@ Simili-Bot supports both **Single-Repository** and **Organization-wide** setups.
 | [Single Repo Setup](DOCS/single-repo-setup.md) | Instructions for setting up Simili-Bot on a standalone repository. |
 | [Organization Setup](DOCS/multi-repo-org-setup.md) | Best practices for deploying across an organization using Reusable Workflows. |
 
+### AI Provider Configuration
+
+Simili supports both Gemini and OpenAI.
+
+- Set at least one key: `GEMINI_API_KEY` or `OPENAI_API_KEY`
+- If both keys are set, Simili uses Gemini by default (Gemini takes precedence)
+- If only one key is set, Simili uses that provider
+
+Default models:
+
+- LLM: `gemini-2.0-flash-lite` (Gemini), `gpt-5.2` (OpenAI)
+- Embeddings: `text-embedding-004` (Gemini), `text-embedding-3-small` (OpenAI)
+
+If you override `embedding.model`, keep `embedding.dimensions` aligned with the model:
+
+- `text-embedding-004` -> `768`
+- `gemini-embedding-001` -> `3072`
+- `text-embedding-3-small` -> `1536`
+- `text-embedding-3-large` -> `3072`
+
 ## Examples
 
 We provide copy-pasteable examples to get you started quickly:

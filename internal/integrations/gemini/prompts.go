@@ -105,7 +105,7 @@ func buildResponsePrompt(similar []SimilarIssueInput) string {
 			i+1, s.Number, s.Title, s.Similarity*100, status, s.URL))
 	}
 
-	return fmt.Sprintf(`You are an AI assistant helping users find related GitHub issues. 
+	return fmt.Sprintf(`You are an AI assistant helping users find related GitHub issues.
 
 The following similar issues were found:
 
