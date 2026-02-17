@@ -8,6 +8,7 @@ package gemini
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -34,6 +35,8 @@ func TestIsRetryableError(t *testing.T) {
 		{"client error 400", &googleapi.Error{Code: 400, Message: "Bad Request"}, false},
 		{"forbidden 403", &googleapi.Error{Code: 403, Message: "Forbidden"}, false},
 		{"not found 404", &googleapi.Error{Code: 404, Message: "Not Found"}, false},
+		{"wrapped gRPC retryable", fmt.Errorf("embed: %w", status.New(codes.ResourceExhausted, "quota").Err()), true},
+		{"wrapped gRPC non-retryable", fmt.Errorf("embed: %w", status.New(codes.NotFound, "not found").Err()), false},
 		{"generic error", errors.New("something went wrong"), false},
 		{"empty text error", errors.New("text cannot be empty"), false},
 	}

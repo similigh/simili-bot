@@ -56,9 +56,12 @@ func isRetryableError(err error) bool {
 		return gerr.Code == 429 || (gerr.Code >= 500 && gerr.Code < 600)
 	}
 
-	// gRPC transport: generative-ai-go can return gRPC status errors.
-	if st, ok := status.FromError(err); ok {
-		switch st.Code() {
+	// gRPC transport: use errors.As with the GRPCStatus interface so that
+	// errors wrapped via fmt.Errorf("%w", grpcErr) are correctly detected.
+	// status.FromError does not unwrap, so it would miss these cases.
+	var grpcErr interface{ GRPCStatus() *status.Status }
+	if errors.As(err, &grpcErr) {
+		switch grpcErr.GRPCStatus().Code() {
 		case codes.ResourceExhausted, codes.Unavailable, codes.Internal:
 			return true
 		}
