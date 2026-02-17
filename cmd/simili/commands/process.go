@@ -137,11 +137,26 @@ func runProcess() {
 		}
 
 		// Apply optional overrides when --issue is used
+		if repoName != "" && strings.Contains(repoName, "/") {
+			parts := strings.SplitN(repoName, "/", 2)
+			if len(parts) == 2 {
+				if strings.TrimSpace(parts[0]) != "" {
+					issue.Org = strings.TrimSpace(parts[0])
+				}
+				if strings.TrimSpace(parts[1]) != "" {
+					issue.Repo = strings.TrimSpace(parts[1])
+				}
+			}
+		} else {
+			if orgName != "" {
+				issue.Org = orgName
+			}
+			if repoName != "" {
+				issue.Repo = repoName
+			}
+		}
 		if orgName != "" {
 			issue.Org = orgName
-		}
-		if repoName != "" && !strings.Contains(repoName, "/") {
-			issue.Repo = repoName
 		}
 		if issueNum != 0 {
 			issue.Number = issueNum
