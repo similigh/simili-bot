@@ -274,7 +274,8 @@ jobs:
         run: |
           REPO="${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}"
           ISSUE="${{ steps.trigger.outputs.issue_number }}"
-          BOT="${{ env.BOT_NAME }}"
+          # Comments are posted via github.token, so the author is github-actions[bot]
+          BOT="github-actions[bot]"
           MAX=30  # 30 × 10 s = 5 min
 
           for i in $(seq 1 $MAX); do
@@ -319,7 +320,7 @@ jobs:
         run: |
           REPO="${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}"
           ISSUE="${{ steps.trigger.outputs.issue_number }}"
-          BOT="${{ env.BOT_NAME }}"
+          BOT="github-actions[bot]"
 
           echo "Waiting 60 s for potential re-triggers…"
           sleep 60
