@@ -80,6 +80,9 @@ jobs:
           # Configure git for the bot user
           git config user.name "${{ secrets.BOT_USERNAME }}"
           git config user.email "${{ secrets.BOT_USERNAME }}@users.noreply.github.com"
+          
+          # Set up authentication for git push
+          git remote set-url origin "https://x-access-token:${{ secrets.BOT_PAT }}@github.com/${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}.git"
 
           # --- README ---
           cat > README.md << 'EOF'
