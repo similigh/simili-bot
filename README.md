@@ -5,7 +5,7 @@
 # Simili Bot
 
 <p align="center">
-  <strong>AI-Powered GitHub Issue Intelligence</strong>
+  <strong>AI-Powered GitHub Issue Intelligence.</strong>
 </p>
 
 <p align="center">
