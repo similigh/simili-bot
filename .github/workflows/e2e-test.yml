@@ -227,8 +227,11 @@ jobs:
           jobs:
             triage:
               runs-on: ubuntu-latest
-              # Prevent the bot's own comment from re-triggering the workflow
-              if: github.actor != 'gh-simili-bot' && github.actor != 'github-actions[bot]'
+              # Skip only when the bot itself posts a comment (prevents feedback loop).
+              # Always run for issues: opened/edited events.
+              if: >
+                github.event_name != 'issue_comment' ||
+                (github.actor != 'gh-simili-bot' && github.actor != 'github-actions[bot]')
               steps:
                 - name: Checkout
                   uses: actions/checkout@v4
