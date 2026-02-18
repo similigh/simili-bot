@@ -120,7 +120,7 @@ func runIndex(cmd *cobra.Command, args []string) {
 		}
 
 		if indexIncludePRs && prCollection != cfg.Qdrant.Collection {
-			err = qdrantClient.CreateCollection(ctx, prCollection, cfg.Embedding.Dimensions)
+			err = qdrantClient.CreateCollection(ctx, prCollection, embeddingDimensions)
 			if err != nil {
 				log.Fatalf("Failed to create/verify PR collection: %v", err)
 			}
