@@ -300,16 +300,16 @@ jobs:
           gh run list --repo "$REPO" --limit 5 || true
           exit 1
 
-      # ----- 10. Verify similarity -----
       - name: Verify similarity detection
         if: steps.poll.outputs.bot_commented == 'true'
+        env:
+          COMMENT_BODY: ${{ steps.poll.outputs.comment_body }}
         run: |
-          BODY='${{ steps.poll.outputs.comment_body }}'
-          if echo "$BODY" | grep -qiE "(similar|duplicate|related|#1)"; then
+          if echo "$COMMENT_BODY" | grep -qiE "(similar|duplicate|related|#1)"; then
             echo "✅ Similarity detected correctly"
           else
             echo "⚠️  Comment posted but no similarity reference found"
-            echo "$BODY"
+            echo "$COMMENT_BODY"
           fi
 
       # ----- 11. Verify no loop -----
