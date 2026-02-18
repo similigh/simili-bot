@@ -178,7 +178,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TEST_COLLECTION: ${{ env.TEST_COLLECTION }}
         run: |
-          REPO="${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}"
+          REPO="${{ steps.create_repo.outputs.bot_name }}/${{ env.TEST_REPO_NAME }}"
 
           cat > "$RUNNER_TEMP/index-cfg.yaml" << 'IDXEOF'
           qdrant:
