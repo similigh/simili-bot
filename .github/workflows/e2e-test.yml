@@ -22,6 +22,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 env:
   # Unique names per workflow run to avoid collisions
@@ -51,7 +52,7 @@ jobs:
           echo "✅ Required secrets are present."
 
       # -----------------------------------------------------------------------
-      # 1. Setup — Create temporary test repository
+      # 1. Setup — Create temporary test repository (PUBLIC so devs can inspect)
       # -----------------------------------------------------------------------
       - name: Create test repository
         run: |
@@ -62,13 +63,13 @@ jobs:
 
           echo "::group::Creating test repo ${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
           gh repo create "${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}" \
-            --private \
-            --description "Simili E2E test repo (auto-created, will be deleted)" \
+            --public \
+            --description "Simili E2E test repo (auto-created by PR #${{ github.event.pull_request.number }})" \
             --clone
           echo "::endgroup::"
 
       # -----------------------------------------------------------------------
-      # 2. Seed — Push README and simili.yaml config
+      # 2. Seed — Push README and simili.yaml config (NO workflow yet)
       # -----------------------------------------------------------------------
       - name: Seed test repository with config files
         env:
@@ -77,53 +78,50 @@ jobs:
           set -x
           cd "${{ env.TEST_REPO_NAME }}"
 
-          
           # Set up authentication for git push using gh CLI
           unset GH_TOKEN
           echo "${{ secrets.BOT_PAT }}" | gh auth login --with-token
           gh auth setup-git
-          
+
           # Configure user identity
           git config user.name "${{ secrets.BOT_USERNAME }}"
           git config user.email "makerslab.foss@gmail.com"
 
           # --- README ---
-          cat > README.md << 'EOF'
-          # Simili E2E Test Repository
+          cat > README.md << 'README_EOF'
+# Simili E2E Test Repository
 
-          This repository is automatically created by the Simili Bot E2E test pipeline.
-          It will be deleted after the test completes.
-          EOF
+This repository is automatically created by the Simili Bot E2E test pipeline.
+It is kept alive so developers can inspect the results.
+README_EOF
 
           # --- .github/simili.yaml ---
           mkdir -p .github
           cat > .github/simili.yaml << EOF
-          qdrant:
-            url: "\${QDRANT_URL}"
-            api_key: "\${QDRANT_API_KEY}"
-            collection: "${{ env.TEST_COLLECTION }}"
+qdrant:
+  url: "${QDRANT_URL}"
+  api_key: "${QDRANT_API_KEY}"
+  collection: "${{ env.TEST_COLLECTION }}"
 
-          embedding:
-            provider: "gemini"
-            api_key: "\${GEMINI_API_KEY}"
-            model: "gemini-embedding-001"
-            dimensions: 3072
+embedding:
+  provider: "gemini"
+  api_key: "${GEMINI_API_KEY}"
+  model: "gemini-embedding-001"
+  dimensions: 3072
 
-          llm:
-            provider: "gemini"
-            api_key: "\${GEMINI_API_KEY}"
-            model: "gemini-2.5-flash"
+llm:
+  provider: "gemini"
+  api_key: "${GEMINI_API_KEY}"
+  model: "gemini-2.5-flash"
 
-          defaults:
-            similarity_threshold: 0.65
-            max_similar_to_show: 3
+defaults:
+  similarity_threshold: 0.65
+  max_similar_to_show: 3
 
-          bot_users:
-            - "${{ secrets.BOT_USERNAME }}"
-          EOF
+bot_users:
+  - "${{ secrets.BOT_USERNAME }}"
+EOF
 
-          # Commit and push
-          
           # Commit and push
           git add -A
           git commit -m "chore: seed E2E test repo with Simili config"
@@ -142,17 +140,11 @@ jobs:
           echo "${{ secrets.QDRANT_API_KEY }}" | gh secret set QDRANT_API_KEY --repo "$REPO"
           echo "${{ secrets.GEMINI_API_KEY }}" | gh secret set GEMINI_API_KEY --repo "$REPO"
           echo "${{ secrets.BOT_PAT }}" | gh secret set GH_PAT --repo "$REPO"
+          echo "${{ secrets.BOT_USERNAME }}" | gh secret set BOT_USERNAME --repo "$REPO"
           echo "::endgroup::"
 
       # -----------------------------------------------------------------------
-      # 4. Enable Actions on the test repo
-      # -----------------------------------------------------------------------
-      - name: Enable GitHub Actions on test repo
-        env:
-          GH_TOKEN: ${{ secrets.BOT_PAT }}
-        run: |
-      # -----------------------------------------------------------------------
-      # 5. Create 5 seed issues (diversity for similarity corpus)
+      # 4. Create 5 seed issues (NO workflow yet, so these won't trigger the bot)
       # -----------------------------------------------------------------------
       - name: Create seed issues
         env:
@@ -185,7 +177,7 @@ jobs:
           echo "::endgroup::"
 
       # -----------------------------------------------------------------------
-      # 6. Index the seed issues into Qdrant
+      # 5. Index the seed issues into Qdrant
       # -----------------------------------------------------------------------
       - name: Checkout simili-bot (PR version)
         uses: actions/checkout@v4
@@ -238,23 +230,19 @@ jobs:
           echo "::endgroup::"
 
       # -----------------------------------------------------------------------
-      # 7. Wait for indexing to settle
+      # 6. Wait for indexing to settle
       # -----------------------------------------------------------------------
       - name: Wait for index to settle
         run: sleep 15
 
       # -----------------------------------------------------------------------
-      # 7b. Enable Workflow — Add triage.yml so only new issues trigger it
+      # 7. Enable Workflow — NOW add triage.yml so only future issues trigger it
       # -----------------------------------------------------------------------
       - name: Enable Simili workflow
         env:
           GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
           set -x
-          # Clone the repo deeply to ensure history if needed, though shallow is fine.
-          # We need to clone again because previous steps modified it or context is lost/different.
-          # Cloning to a unique directory to avoid conflicts.
-          
           rm -rf "${{ env.TEST_REPO_NAME }}_workflow"
           echo "::group::Cloning test repo to add workflow"
           gh repo clone "${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}" "${{ env.TEST_REPO_NAME }}_workflow"
@@ -265,58 +253,57 @@ jobs:
           unset GH_TOKEN
           echo "${{ secrets.BOT_PAT }}" | gh auth login --with-token
           gh auth setup-git
-          
+
           # Configure user identity
           git config user.name "${{ secrets.BOT_USERNAME }}"
           git config user.email "makerslab.foss@gmail.com"
 
           # --- .github/workflows/triage.yml ---
+          # Write the workflow file WITHOUT extra leading whitespace
           mkdir -p .github/workflows
           cat > .github/workflows/triage.yml << 'WORKFLOW_EOF'
-          name: Simili Triage
-          
-          on:
-            issues:
-              types: [opened, edited, reopened]
-            issue_comment:
-              types: [created]
-          
-          permissions:
-            contents: read
-            issues: write
-          
-          jobs:
-            triage:
-              runs-on: ubuntu-latest
-              steps:
-                - name: Checkout test repo
-                  uses: actions/checkout@v4
-          
-                - name: Run Simili Bot
-                  uses: similigh/simili-bot@__PR_SHA__
-                  env:
-                    QDRANT_URL: ${{ secrets.QDRANT_URL }}
-                    QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
-                    GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-                    SIMILI_E2E_TEST_USER: ${{ secrets.BOT_USERNAME }}
-                  with:
-                    config_path: .github/simili.yaml
-                    command: process
-                    github_token: ${{ secrets.GH_PAT }}
-          WORKFLOW_EOF
-          
+name: Simili Triage
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout test repo
+        uses: actions/checkout@v4
+
+      - name: Run Simili Bot
+        uses: similigh/simili-bot@__PR_SHA__
+        env:
+          QDRANT_URL: ${{ secrets.QDRANT_URL }}
+          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SIMILI_E2E_TEST_USER: ${{ secrets.BOT_USERNAME }}
+        with:
+          config_path: .github/simili.yaml
+          command: process
+          github_token: ${{ secrets.GH_PAT }}
+WORKFLOW_EOF
+
           # Replace the placeholder with the actual PR SHA
           sed -i "s|__PR_SHA__|${{ github.event.pull_request.head.sha }}|g" .github/workflows/triage.yml
-          
+
           # Commit and push
           git add -A
           git commit -m "chore: enable Simili Triage workflow"
           git push origin HEAD:main
-          
-          echo "::group::Waiting for workflow registration"
-          echo "Sleeping for 10 seconds to allow GitHub to register the new workflow..."
-          sleep 10
-          echo "::endgroup::"
+
+          echo "Sleeping for 15 seconds to allow GitHub to register the new workflow..."
+          sleep 15
 
       # -----------------------------------------------------------------------
       # 8. Create trigger issue (designed to match seed issue #1)
@@ -400,7 +387,6 @@ jobs:
 
           echo "::group::Checking similarity detection"
           # The bot should have found the similar seed issue about login crashes
-          # Check if the comment references issue #1 or contains similarity language
           if echo "$COMMENT_BODY" | grep -qiE "(similar|duplicate|related|#1|crash.*login|login.*crash)"; then
             echo "✅ Bot detected similarity correctly!"
           else
@@ -427,29 +413,7 @@ jobs:
 
           echo "::group::Loop detection check"
 
-          # Count workflow runs triggered by the Simili Triage workflow
-          TOTAL_RUNS=$(gh run list --repo "$REPO" \
-            --workflow "Simili Triage" \
-            --limit 50 \
-            --json status \
-            --jq 'length')
-
-          echo "Total 'Simili Triage' workflow runs: $TOTAL_RUNS"
-
-          # We expect:
-          #   - 5 runs from creating seed issues (may have completed or been skipped)
-          #   - 1 run from the trigger issue
-          #   - 0 additional runs from the bot's own comment (loop!)
-          #
-          # The seed issues were created BEFORE the triage workflow existed in the repo
-          # (we committed the workflow in step 2, then created issues in step 5).
-          # But since the workflow was already committed when issues were created,
-          # seed issues WILL trigger workflows. That's fine — they won't have indexed
-          # data yet so they'll just find no matches.
-          #
-          # Key check: no runs should have started AFTER the bot's comment on the trigger issue.
-
-          # Check for comments from the bot on the trigger issue
+          # Count bot comments on the trigger issue
           BOT_COMMENT_COUNT=$(gh api "repos/$REPO/issues/$ISSUE_NUMBER/comments" \
             --jq "[.[] | select(.user.login == \"$BOT_USER\")] | length")
 
@@ -465,23 +429,8 @@ jobs:
           echo "::endgroup::"
 
       # -----------------------------------------------------------------------
-      # 12. Cleanup — Always runs, even on failure
+      # 12. Cleanup Qdrant collection (always run)
       # -----------------------------------------------------------------------
-      - name: Cleanup test repository
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.BOT_PAT }}
-        run: |
-          REPO="${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
-
-          echo "::group::Cleaning up"
-
-          # Delete the test repo
-          echo "Deleting test repository $REPO..."
-          gh repo delete "$REPO" --yes || echo "Warning: Failed to delete repo (may not exist)"
-
-          echo "::endgroup::"
-
       - name: Cleanup Qdrant collection
         if: always()
         run: |
@@ -502,7 +451,83 @@ jobs:
           echo "::endgroup::"
 
       # -----------------------------------------------------------------------
-      # 13. Summary
+      # 13. Update test repo README with results and post PR comment
+      # -----------------------------------------------------------------------
+      - name: Update test repo with results
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.BOT_PAT }}
+        run: |
+          REPO="${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
+          BOT_COMMENTED="${{ steps.poll.outputs.bot_commented }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          PR_SHA="${{ github.event.pull_request.head.sha }}"
+          RUN_ID="${{ github.run_id }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${RUN_ID}"
+
+          # Update README with test results
+          rm -rf "${{ env.TEST_REPO_NAME }}_results"
+          gh repo clone "$REPO" "${{ env.TEST_REPO_NAME }}_results" || true
+          cd "${{ env.TEST_REPO_NAME }}_results" || exit 0
+
+          unset GH_TOKEN
+          echo "${{ secrets.BOT_PAT }}" | gh auth login --with-token
+          gh auth setup-git
+          git config user.name "${{ secrets.BOT_USERNAME }}"
+          git config user.email "makerslab.foss@gmail.com"
+
+          cat > README.md << EOF
+# Simili E2E Test Repository
+
+> Auto-created by [PR #${PR_NUMBER}](https://github.com/${{ github.repository }}/pull/${PR_NUMBER}) E2E test run
+
+## Test Results
+
+| Detail | Value |
+|--------|-------|
+| **PR** | [#${PR_NUMBER}](https://github.com/${{ github.repository }}/pull/${PR_NUMBER}) |
+| **Commit** | \`${PR_SHA:0:7}\` |
+| **Run** | [#${RUN_ID}](${RUN_URL}) |
+| **Bot Responded** | $([ "$BOT_COMMENTED" = "true" ] && echo "✅ Yes" || echo "❌ No") |
+| **Created** | $(date -u '+%Y-%m-%d %H:%M UTC') |
+
+## What this repo tests
+
+1. **Seed issues** (#1-#5) — diverse issues for the similarity corpus
+2. **Trigger issue** (#6) — designed to match seed issue #1 (login crash)
+3. **Bot response** — verifies the bot detects the duplicate and posts a triage comment
+4. **Loop safety** — verifies the bot doesn't re-trigger itself
+EOF
+
+          git add -A
+          git diff --cached --quiet || {
+            git commit -m "chore: update README with E2E test results"
+            git push origin HEAD:main
+          }
+
+      - name: Post PR comment with test repo link
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO="${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
+          BOT_COMMENTED="${{ steps.poll.outputs.bot_commented }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          RESULT_EMOJI=$([ "$BOT_COMMENTED" = "true" ] && echo "✅" || echo "❌")
+
+          gh pr comment "$PR_NUMBER" --body "## 🧪 E2E Test Results
+
+${RESULT_EMOJI} **Bot Response:** $([ "$BOT_COMMENTED" = "true" ] && echo "Bot detected duplicate and posted triage comment" || echo "Bot did not respond within timeout")
+
+**Test Repo:** [${REPO}](https://github.com/${REPO}) — inspect issues, comments, and workflow runs
+**Workflow Run:** [View logs](${RUN_URL})
+
+<sub>Auto-generated by E2E test pipeline</sub>"
+
+      # -----------------------------------------------------------------------
+      # 14. Summary
       # -----------------------------------------------------------------------
       - name: Test summary
         if: always()
@@ -517,4 +542,4 @@ jobs:
           else
             echo "| Bot Responded | ❌ |" >> $GITHUB_STEP_SUMMARY
           fi
-          echo "| Cleanup | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Repo | [${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}](https://github.com/${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}) |" >> $GITHUB_STEP_SUMMARY
