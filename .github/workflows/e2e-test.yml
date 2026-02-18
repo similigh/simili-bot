@@ -74,6 +74,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
+          set -x
           cd "${{ env.TEST_REPO_NAME }}"
 
           # Configure git for the bot user
