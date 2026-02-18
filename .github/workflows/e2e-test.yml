@@ -243,7 +243,6 @@ jobs:
                   with:
                     config_path: .github/simili.yaml
                     command: process
-                    github_token: ${{ github.token }}
           WFEOF
 
           sed -i "s|__PR_SHA__|${{ github.event.pull_request.head.sha }}|g" \
