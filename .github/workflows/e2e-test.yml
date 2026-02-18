@@ -36,6 +36,21 @@ jobs:
 
     steps:
       # -----------------------------------------------------------------------
+      # 0. Validate Secrets — Fail early if required secrets are missing
+      # -----------------------------------------------------------------------
+      - name: Validate Secrets
+        run: |
+          if [ -z "${{ secrets.BOT_PAT }}" ]; then
+            echo "::error::BOT_PAT secret is missing! Please add it to Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          if [ -z "${{ secrets.BOT_USERNAME }}" ]; then
+            echo "::error::BOT_USERNAME secret is missing! Please add it to Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          echo "✅ Required secrets are present."
+
+      # -----------------------------------------------------------------------
       # 1. Setup — Create temporary test repository
       # -----------------------------------------------------------------------
       - name: Create test repository
