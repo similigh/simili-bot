@@ -30,9 +30,12 @@ Create a `.github/workflows/simili.yml` file in your central repository. This is
 
 Navigate to your Organization Settings > Secrets and variables > Actions. Add the following secrets at the organization level so they are accessible to all repositories:
 
-- `GEMINI_API_KEY`: API key for Google Gemini.
+- `GEMINI_API_KEY`: Optional Gemini API key (takes precedence when both provider keys are set).
+- `OPENAI_API_KEY`: Optional OpenAI API key (used when Gemini key is not set).
 - `QDRANT_URL`: URL of your Qdrant instance.
 - `QDRANT_API_KEY`: API key for Qdrant authentication.
+
+You must set at least one of `GEMINI_API_KEY` or `OPENAI_API_KEY`.
 
 ## Step 3: Configure Repositories
 

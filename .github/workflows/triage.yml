@@ -16,6 +16,11 @@ permissions:
 jobs:
   triage:
     runs-on: ubuntu-latest
+    # Skip only when the bot itself posts a comment (prevents feedback loop).
+    # Always run for issues: opened/edited/reopened events.
+    if: >
+      github.event_name != 'issue_comment' ||
+      (github.actor != 'gh-simili-bot' && github.actor != 'github-actions[bot]')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

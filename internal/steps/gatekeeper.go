@@ -9,6 +9,7 @@ package steps
 
 import (
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -18,7 +19,7 @@ import (
 )
 
 // Gatekeeper checks if the issue's repository is enabled and applies cooldown logic.
-type Gatekeeper struct{
+type Gatekeeper struct {
 	github *github.Client
 }
 
@@ -41,10 +42,21 @@ func (s *Gatekeeper) Run(ctx *pipeline.Context) error {
 		ctx.Issue.Number, ctx.Issue.EventType, ctx.Issue.EventAction, ctx.Issue.Org, ctx.Issue.Repo)
 
 	// Early exit: skip events triggered by bot authors to prevent infinite loops.
-	// This catches cases where the bot's own comment triggers a new workflow run.
 	if ctx.Issue.CommentAuthor != "" {
 		author := ctx.Issue.CommentAuthor
-		if isBotAuthor(author, ctx.Config.BotUsers) {
+
+		// E2E bypass: for non-comment events (issues, pull_request), allow the
+		// configured test user through so the bot can process its own trigger issue.
+		// For issue_comment events, always block to prevent loops.
+		e2eBypass := false
+		if e2eUser := os.Getenv("SIMILI_E2E_TEST_USER"); e2eUser != "" {
+			if strings.EqualFold(author, e2eUser) && ctx.Issue.EventType != "issue_comment" {
+				log.Printf("[gatekeeper] E2E bypass: allowing %q for %s event", author, ctx.Issue.EventType)
+				e2eBypass = true
+			}
+		}
+
+		if !e2eBypass && isBotAuthor(author, ctx.Config.BotUsers) {
 			log.Printf("[gatekeeper] Skipping event from bot author %q", author)
 			ctx.Result.Skipped = true
 			ctx.Result.SkipReason = "event triggered by bot"

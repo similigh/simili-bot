@@ -4,8 +4,10 @@ qdrant:
   collection: "org-issues"
 
 embedding:
-  provider: "gemini"
-  api_key: "${GEMINI_API_KEY}"
+  provider: "gemini" # or "openai"
+  api_key: "${GEMINI_API_KEY}" # or "${OPENAI_API_KEY}"
+  model: "text-embedding-004" # OpenAI example: "text-embedding-3-small"
+  dimensions: 768 # OpenAI text-embedding-3-small -> 1536
 
 llm:
   provider: "gemini"
