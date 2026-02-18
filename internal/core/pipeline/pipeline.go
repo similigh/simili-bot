@@ -86,6 +86,7 @@ type SimilarIssue struct {
 	URL        string
 	Similarity float64
 	State      string
+	Type       string // "issue" or "pr"
 }
 
 // Context carries data through the pipeline steps.

@@ -231,8 +231,8 @@ func (s *ResponseBuilder) buildSimilarSection(ctx *pipeline.Context) string {
 	parts = append(parts, "<details>")
 	parts = append(parts, "<summary>Similar Threads</summary>")
 	parts = append(parts, "")
-	parts = append(parts, "| Similarity | Thread | Status |")
-	parts = append(parts, "| :--- | :--- | :--- |")
+	parts = append(parts, "| Similarity | Type | Thread | Status |")
+	parts = append(parts, "| :--- | :--- | :--- | :--- |")
 
 	for _, similar := range ctx.SimilarIssues {
 		var status string
@@ -252,13 +252,22 @@ func (s *ResponseBuilder) buildSimilarSection(ctx *pipeline.Context) string {
 			title = string(runes[:47]) + "..."
 		}
 
-		parts = append(parts, fmt.Sprintf("| %.0f%% | [#%d %s](%s) | %s |",
-			similar.Similarity*100, similar.Number, title, similar.URL, status))
+		parts = append(parts, fmt.Sprintf("| %.0f%% | %s | [#%d %s](%s) | %s |",
+			similar.Similarity*100, similarThreadTypeIcon(similar.Type), similar.Number, title, similar.URL, status))
 	}
 
 	parts = append(parts, "</details>")
 	parts = append(parts, "")
 	return strings.Join(parts, "\n")
+}
+
+func similarThreadTypeIcon(threadType string) string {
+	switch strings.ToLower(strings.TrimSpace(threadType)) {
+	case "pr", "pull_request", "pull request":
+		return "🔀"
+	default:
+		return "📝"
+	}
 }
 
 // buildDuplicateSection creates the duplicate warning section.
