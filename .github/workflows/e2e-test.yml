@@ -16,8 +16,8 @@
 name: Simili E2E Test
 
 on:
-  pull_request_review:
-    types: [submitted]
+  pull_request_target:
+    types: [labeled]
   workflow_dispatch:
     inputs:
       sha:
@@ -44,8 +44,8 @@ jobs:
     name: E2E Integration Test
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Only run if the review was approved (or manual trigger)
-    if: github.event.review.state == 'approved' || github.event_name == 'workflow_dispatch'
+    # Only run if the 'e2e' label was added (or manual trigger)
+    if: github.event.label.name == 'e2e' || github.event_name == 'workflow_dispatch'
 
     steps:
       # ----- 0. Validate secrets -----
