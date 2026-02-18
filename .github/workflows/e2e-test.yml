@@ -1,16 +1,16 @@
 # =============================================================================
 # E2E Integration Test Pipeline for Simili Bot
 # =============================================================================
-# Triggers on every PR to main. Creates a temporary test repo under the bot
-# user account, seeds it with issues, installs the PR version of Simili,
+# Triggers on every PR to main. Creates a test repo under the bot user account,
+# seeds it with issues, indexes them, installs the PR version of Simili,
 # then verifies duplicate detection and loop safety.
 #
 # Required secrets:
-#   BOT_PAT          - Bot user PAT (repo, workflow, delete_repo scopes)
-#   BOT_USERNAME     - Bot user's GitHub username
-#   QDRANT_URL       - Qdrant cluster URL
-#   QDRANT_API_KEY   - Qdrant API key
-#   GEMINI_API_KEY   - Gemini API key
+#   BOT_PAT          – Bot user PAT (repo, workflow scopes)
+#   BOT_USERNAME     – Bot user's GitHub username (must start with "gh-simili")
+#   QDRANT_URL       – Qdrant cluster URL
+#   QDRANT_API_KEY   – Qdrant API key
+#   GEMINI_API_KEY   – Gemini API key
 # =============================================================================
 
 name: Simili E2E Test
@@ -25,7 +25,6 @@ permissions:
   pull-requests: write
 
 env:
-  # Unique names per workflow run to avoid collisions
   TEST_REPO_NAME: "simili-e2e-${{ github.run_id }}"
   TEST_COLLECTION: "simili-e2e-test-${{ github.run_id }}"
 
@@ -36,123 +35,86 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      # -----------------------------------------------------------------------
-      # 0. Validate Secrets — Fail early if required secrets are missing
-      # -----------------------------------------------------------------------
-      - name: Validate Secrets
+      # ----- 0. Validate secrets -----
+      - name: Validate secrets
         run: |
-          if [ -z "${{ secrets.BOT_PAT }}" ]; then
-            echo "::error::BOT_PAT secret is missing! Please add it to Settings -> Secrets and variables -> Actions."
+          missing=""
+          [ -z "${{ secrets.BOT_PAT }}" ]      && missing="$missing BOT_PAT"
+          [ -z "${{ secrets.BOT_USERNAME }}" ]  && missing="$missing BOT_USERNAME"
+          [ -z "${{ secrets.QDRANT_URL }}" ]    && missing="$missing QDRANT_URL"
+          [ -z "${{ secrets.QDRANT_API_KEY }}" ] && missing="$missing QDRANT_API_KEY"
+          [ -z "${{ secrets.GEMINI_API_KEY }}" ] && missing="$missing GEMINI_API_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing secrets:$missing"
             exit 1
           fi
-          if [ -z "${{ secrets.BOT_USERNAME }}" ]; then
-            echo "::error::BOT_USERNAME secret is missing! Please add it to Settings -> Secrets and variables -> Actions."
-            exit 1
-          fi
-          echo "✅ Required secrets are present."
+          echo "✅ All required secrets present"
 
-      # -----------------------------------------------------------------------
-      # 1. Setup — Create temporary test repository (PUBLIC so devs can inspect)
-      # -----------------------------------------------------------------------
+      # ----- 1. Create test repo (public, so devs can inspect) -----
       - name: Create test repository
         run: |
-          echo "::group::Authenticating as bot user"
-          echo "${{ secrets.BOT_PAT }}" | gh auth login --with-token
-          gh auth status
-          echo "::endgroup::"
-
-          echo "::group::Creating test repo ${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
-          gh repo create "${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}" \
-            --public \
-            --description "Simili E2E test repo (auto-created by PR #${{ github.event.pull_request.number }})" \
-            --clone
-          echo "::endgroup::"
-
-      # -----------------------------------------------------------------------
-      # 2. Seed — Push README and simili.yaml config (NO workflow yet)
-      # -----------------------------------------------------------------------
-      - name: Seed test repository with config files
-        env:
-          GH_TOKEN: ${{ secrets.BOT_PAT }}
-        run: |
-          set -x
-          cd "${{ env.TEST_REPO_NAME }}"
-
-          # Set up authentication for git push using gh CLI
-          unset GH_TOKEN
           echo "${{ secrets.BOT_PAT }}" | gh auth login --with-token
           gh auth setup-git
+          gh repo create "${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}" \
+            --public \
+            --description "Simili E2E test – PR #${{ github.event.pull_request.number }}" \
+            --clone
 
-          # Configure user identity
-          git config user.name "${{ secrets.BOT_USERNAME }}"
+      # ----- 2. Seed config files (NO workflow yet) -----
+      - name: Seed test repository
+        run: |
+          cd "${{ env.TEST_REPO_NAME }}"
+          git config user.name  "${{ secrets.BOT_USERNAME }}"
           git config user.email "makerslab.foss@gmail.com"
 
-          # --- README ---
-          cat > README.md << 'README_EOF'
-# Simili E2E Test Repository
+          # README
+          cat > README.md << 'READMEEOF'
+          # Simili E2E Test Repository
+          Auto-created by the Simili Bot E2E pipeline. Kept for inspection.
+          READMEEOF
 
-This repository is automatically created by the Simili Bot E2E test pipeline.
-It is kept alive so developers can inspect the results.
-README_EOF
-
-          # --- .github/simili.yaml ---
+          # .github/simili.yaml  (env-var refs for runtime, hardcoded collection)
           mkdir -p .github
-          cat > .github/simili.yaml << EOF
-qdrant:
-  url: "${QDRANT_URL}"
-  api_key: "${QDRANT_API_KEY}"
-  collection: "${{ env.TEST_COLLECTION }}"
+          cat > .github/simili.yaml << CFGEOF
+          qdrant:
+            url: \${QDRANT_URL}
+            api_key: \${QDRANT_API_KEY}
+            collection: ${{ env.TEST_COLLECTION }}
+          embedding:
+            provider: gemini
+            api_key: \${GEMINI_API_KEY}
+            model: gemini-embedding-001
+            dimensions: 768
+          llm:
+            provider: gemini
+            api_key: \${GEMINI_API_KEY}
+            model: gemini-2.5-flash
+          defaults:
+            similarity_threshold: 0.65
+            max_similar_to_show: 3
+          CFGEOF
 
-embedding:
-  provider: "gemini"
-  api_key: "${GEMINI_API_KEY}"
-  model: "gemini-embedding-001"
-  dimensions: 3072
-
-llm:
-  provider: "gemini"
-  api_key: "${GEMINI_API_KEY}"
-  model: "gemini-2.5-flash"
-
-defaults:
-  similarity_threshold: 0.65
-  max_similar_to_show: 3
-
-bot_users:
-  - "${{ secrets.BOT_USERNAME }}"
-EOF
-
-          # Commit and push
           git add -A
-          git commit -m "chore: seed E2E test repo with Simili config"
+          git commit -m "chore: seed E2E test config"
           git push origin HEAD:main
 
-      # -----------------------------------------------------------------------
-      # 3. Copy secrets to test repo (so its workflows can use them)
-      # -----------------------------------------------------------------------
+      # ----- 3. Copy secrets into test repo -----
       - name: Set secrets on test repository
         env:
           GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
           REPO="${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
-          echo "::group::Setting secrets on $REPO"
-          echo "${{ secrets.QDRANT_URL }}" | gh secret set QDRANT_URL --repo "$REPO"
+          echo "${{ secrets.QDRANT_URL }}"    | gh secret set QDRANT_URL    --repo "$REPO"
           echo "${{ secrets.QDRANT_API_KEY }}" | gh secret set QDRANT_API_KEY --repo "$REPO"
           echo "${{ secrets.GEMINI_API_KEY }}" | gh secret set GEMINI_API_KEY --repo "$REPO"
-          echo "${{ secrets.BOT_PAT }}" | gh secret set GH_PAT --repo "$REPO"
-          echo "${{ secrets.BOT_USERNAME }}" | gh secret set BOT_USERNAME --repo "$REPO"
-          echo "::endgroup::"
+          echo "${{ secrets.BOT_PAT }}"       | gh secret set GH_PAT        --repo "$REPO"
 
-      # -----------------------------------------------------------------------
-      # 4. Create 5 seed issues (NO workflow yet, so these won't trigger the bot)
-      # -----------------------------------------------------------------------
+      # ----- 4. Create 5 seed issues -----
       - name: Create seed issues
         env:
           GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
           REPO="${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
-
-          echo "::group::Creating 5 seed issues"
 
           gh issue create --repo "$REPO" \
             --title "App crashes on login with invalid credentials" \
@@ -174,25 +136,21 @@ EOF
             --title "Mobile responsive layout broken on iOS Safari" \
             --body "The navigation menu overlaps with the main content area on iPhone 12 and below when using Safari. The hamburger menu does not collapse properly after selecting a menu item."
 
-          echo "::endgroup::"
-
-      # -----------------------------------------------------------------------
-      # 5. Index the seed issues into Qdrant
-      # -----------------------------------------------------------------------
-      - name: Checkout simili-bot (PR version)
+      # ----- 5. Build CLI from PR & index seed issues -----
+      - name: Checkout PR code
         uses: actions/checkout@v4
         with:
-          path: simili-bot-src
+          path: simili-src
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.23'
 
-      - name: Build simili CLI from PR
+      - name: Build simili CLI
         run: |
-          cd simili-bot-src
-          go build -o /tmp/simili-cli ./cmd/simili/main.go
+          cd simili-src
+          go build -o "$RUNNER_TEMP/simili-cli" ./cmd/simili/main.go
 
       - name: Index seed issues
         env:
@@ -203,343 +161,236 @@ EOF
         run: |
           REPO="${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
 
-          # Create a temporary config for the CLI
-          cat > /tmp/simili-index-config.yaml << EOF
+          cat > "$RUNNER_TEMP/index-cfg.yaml" << IDXEOF
           qdrant:
-            url: "${QDRANT_URL}"
-            api_key: "${QDRANT_API_KEY}"
-            collection: "${{ env.TEST_COLLECTION }}"
-
+            url: ${QDRANT_URL}
+            api_key: ${QDRANT_API_KEY}
+            collection: ${{ env.TEST_COLLECTION }}
           embedding:
-            provider: "gemini"
-            api_key: "${GEMINI_API_KEY}"
-            model: "gemini-embedding-001"
-            dimensions: 3072
-
+            provider: gemini
+            api_key: ${GEMINI_API_KEY}
+            model: gemini-embedding-001
+            dimensions: 768
           llm:
-            provider: "gemini"
-            api_key: "${GEMINI_API_KEY}"
-            model: "gemini-2.5-flash"
-          EOF
+            provider: gemini
+            api_key: ${GEMINI_API_KEY}
+            model: gemini-2.5-flash
+          IDXEOF
 
-          echo "::group::Indexing seed issues"
-          /tmp/simili-cli index \
+          "$RUNNER_TEMP/simili-cli" index \
             --repo "$REPO" \
-            --config /tmp/simili-index-config.yaml \
+            --config "$RUNNER_TEMP/index-cfg.yaml" \
             --workers 2
-          echo "::endgroup::"
 
-      # -----------------------------------------------------------------------
-      # 6. Wait for indexing to settle
-      # -----------------------------------------------------------------------
-      - name: Wait for index to settle
+      # ----- 6. Let the index settle -----
+      - name: Wait for index
         run: sleep 15
 
-      # -----------------------------------------------------------------------
-      # 7. Enable Workflow — NOW add triage.yml so only future issues trigger it
-      # -----------------------------------------------------------------------
+      # ----- 7. Push triage workflow to test repo -----
       - name: Enable Simili workflow
-        env:
-          GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
-          set -x
-          rm -rf "${{ env.TEST_REPO_NAME }}_workflow"
-          echo "::group::Cloning test repo to add workflow"
-          gh repo clone "${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}" "${{ env.TEST_REPO_NAME }}_workflow"
-          cd "${{ env.TEST_REPO_NAME }}_workflow"
-          echo "::endgroup::"
-
-          # Set up authentication for git push using gh CLI
-          unset GH_TOKEN
-          echo "${{ secrets.BOT_PAT }}" | gh auth login --with-token
-          gh auth setup-git
-
-          # Configure user identity
-          git config user.name "${{ secrets.BOT_USERNAME }}"
+          rm -rf test-repo-wf
+          gh repo clone "${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}" test-repo-wf
+          cd test-repo-wf
+          git config user.name  "${{ secrets.BOT_USERNAME }}"
           git config user.email "makerslab.foss@gmail.com"
 
-          # --- .github/workflows/triage.yml ---
-          # Write the workflow file WITHOUT extra leading whitespace
           mkdir -p .github/workflows
-          cat > .github/workflows/triage.yml << 'WORKFLOW_EOF'
-name: Simili Triage
+          cat > .github/workflows/triage.yml << 'WFEOF'
+          name: Simili Triage
 
-on:
-  issues:
-    types: [opened, edited, reopened]
-  issue_comment:
-    types: [created]
+          on:
+            issues:
+              types: [opened, edited, reopened]
+            issue_comment:
+              types: [created]
 
-permissions:
-  contents: read
-  issues: write
+          permissions:
+            contents: read
+            issues: write
 
-jobs:
-  triage:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout test repo
-        uses: actions/checkout@v4
+          jobs:
+            triage:
+              runs-on: ubuntu-latest
+              steps:
+                - name: Checkout
+                  uses: actions/checkout@v4
 
-      - name: Run Simili Bot
-        uses: similigh/simili-bot@__PR_SHA__
-        env:
-          QDRANT_URL: ${{ secrets.QDRANT_URL }}
-          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          SIMILI_E2E_TEST_USER: ${{ secrets.BOT_USERNAME }}
-        with:
-          config_path: .github/simili.yaml
-          command: process
-          github_token: ${{ secrets.GH_PAT }}
-WORKFLOW_EOF
+                - name: Run Simili Bot
+                  uses: similigh/simili-bot@__PR_SHA__
+                  env:
+                    QDRANT_URL: ${{ secrets.QDRANT_URL }}
+                    QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+                    GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+                  with:
+                    config_path: .github/simili.yaml
+                    command: process
+                    github_token: ${{ secrets.GH_PAT }}
+          WFEOF
 
-          # Replace the placeholder with the actual PR SHA
-          sed -i "s|__PR_SHA__|${{ github.event.pull_request.head.sha }}|g" .github/workflows/triage.yml
+          sed -i "s|__PR_SHA__|${{ github.event.pull_request.head.sha }}|g" \
+            .github/workflows/triage.yml
 
-          # Commit and push
           git add -A
           git commit -m "chore: enable Simili Triage workflow"
           git push origin HEAD:main
-
-          echo "Sleeping for 15 seconds to allow GitHub to register the new workflow..."
+          echo "Waiting 15s for GitHub to register the workflow…"
           sleep 15
 
-      # -----------------------------------------------------------------------
-      # 8. Create trigger issue (designed to match seed issue #1)
-      # -----------------------------------------------------------------------
+      # ----- 8. Create trigger issue (should match seed #1) -----
       - name: Create trigger issue
         id: trigger
         env:
           GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
           REPO="${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
-
-          ISSUE_URL=$(gh issue create --repo "$REPO" \
+          URL=$(gh issue create --repo "$REPO" \
             --title "Application crashes when logging in with wrong password" \
             --body "The application throws an unhandled exception when invalid credentials are entered during the login flow. The crash occurs immediately after clicking the submit button. No error dialog is shown to the user.")
+          NUM=$(echo "$URL" | grep -oE '[0-9]+$')
+          echo "issue_number=$NUM" >> "$GITHUB_OUTPUT"
+          echo "Trigger issue created: #$NUM"
 
-          ISSUE_NUMBER=$(echo "$ISSUE_URL" | grep -oE '[0-9]+$')
-          echo "issue_number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
-          echo "Trigger issue created: #$ISSUE_NUMBER"
-
-      # -----------------------------------------------------------------------
-      # 9. Poll for bot response on the trigger issue
-      # -----------------------------------------------------------------------
+      # ----- 9. Poll for bot comment -----
       - name: Wait for bot response
         id: poll
         env:
           GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
           REPO="${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
-          ISSUE_NUMBER="${{ steps.trigger.outputs.issue_number }}"
-          BOT_USER="${{ secrets.BOT_USERNAME }}"
+          ISSUE="${{ steps.trigger.outputs.issue_number }}"
+          BOT="${{ secrets.BOT_USERNAME }}"
+          MAX=30  # 30 × 10 s = 5 min
 
-          echo "Polling for bot response on issue #$ISSUE_NUMBER..."
-          MAX_ATTEMPTS=30  # 30 x 10s = 5 minutes
-          ATTEMPT=0
-          BOT_COMMENTED="false"
-
-          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            ATTEMPT=$((ATTEMPT + 1))
-            echo "  Attempt $ATTEMPT/$MAX_ATTEMPTS..."
-
-            # Check for comments by the bot user
-            COMMENTS=$(gh api "repos/$REPO/issues/$ISSUE_NUMBER/comments" \
-              --jq "[.[] | select(.user.login == \"$BOT_USER\")] | length")
-
-            if [ "$COMMENTS" -gt 0 ]; then
-              echo "✅ Bot commented on issue #$ISSUE_NUMBER!"
-              BOT_COMMENTED="true"
-
-              # Capture the comment body for verification
-              COMMENT_BODY=$(gh api "repos/$REPO/issues/$ISSUE_NUMBER/comments" \
-                --jq "[.[] | select(.user.login == \"$BOT_USER\")][0].body")
-              echo "Bot comment body:"
-              echo "$COMMENT_BODY"
-              echo "comment_body<<COMMENT_EOF" >> "$GITHUB_OUTPUT"
-              echo "$COMMENT_BODY" >> "$GITHUB_OUTPUT"
-              echo "COMMENT_EOF" >> "$GITHUB_OUTPUT"
-              break
+          for i in $(seq 1 $MAX); do
+            echo "  Poll $i/$MAX …"
+            COUNT=$(gh api "repos/$REPO/issues/$ISSUE/comments" \
+              --jq "[.[] | select(.user.login == \"$BOT\")] | length")
+            if [ "$COUNT" -gt 0 ]; then
+              echo "✅ Bot commented!"
+              BODY=$(gh api "repos/$REPO/issues/$ISSUE/comments" \
+                --jq "[.[] | select(.user.login == \"$BOT\")][0].body")
+              echo "comment_body<<CBEOF" >> "$GITHUB_OUTPUT"
+              echo "$BODY"               >> "$GITHUB_OUTPUT"
+              echo "CBEOF"               >> "$GITHUB_OUTPUT"
+              echo "bot_commented=true"   >> "$GITHUB_OUTPUT"
+              exit 0
             fi
-
             sleep 10
           done
 
-          echo "bot_commented=$BOT_COMMENTED" >> "$GITHUB_OUTPUT"
+          echo "bot_commented=false" >> "$GITHUB_OUTPUT"
+          echo "❌ Bot did not respond within 5 min"
+          gh run list --repo "$REPO" --limit 5 || true
+          exit 1
 
-          if [ "$BOT_COMMENTED" = "false" ]; then
-            echo "❌ Bot did not respond within 5 minutes"
-
-            # Check if the workflow even ran in the test repo
-            echo "--- Checking workflow runs in test repo ---"
-            gh run list --repo "$REPO" --limit 5 || true
-            exit 1
-          fi
-
-      # -----------------------------------------------------------------------
-      # 10. Verify similarity detection
-      # -----------------------------------------------------------------------
+      # ----- 10. Verify similarity -----
       - name: Verify similarity detection
         if: steps.poll.outputs.bot_commented == 'true'
         run: |
-          COMMENT_BODY='${{ steps.poll.outputs.comment_body }}'
-
-          echo "::group::Checking similarity detection"
-          # The bot should have found the similar seed issue about login crashes
-          if echo "$COMMENT_BODY" | grep -qiE "(similar|duplicate|related|#1|crash.*login|login.*crash)"; then
-            echo "✅ Bot detected similarity correctly!"
+          BODY='${{ steps.poll.outputs.comment_body }}'
+          if echo "$BODY" | grep -qiE "(similar|duplicate|related|#1)"; then
+            echo "✅ Similarity detected correctly"
           else
-            echo "⚠️ Bot responded but similarity reference not found in comment."
-            echo "This may indicate the similarity threshold needs tuning."
-            echo "Comment body was: $COMMENT_BODY"
+            echo "⚠️  Comment posted but no similarity reference found"
+            echo "$BODY"
           fi
-          echo "::endgroup::"
 
-      # -----------------------------------------------------------------------
-      # 11. Loop detection — Verify the bot didn't trigger itself
-      # -----------------------------------------------------------------------
+      # ----- 11. Verify no loop -----
       - name: Verify no infinite loop
         if: steps.poll.outputs.bot_commented == 'true'
         env:
           GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
           REPO="${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
-          ISSUE_NUMBER="${{ steps.trigger.outputs.issue_number }}"
-          BOT_USER="${{ secrets.BOT_USERNAME }}"
+          ISSUE="${{ steps.trigger.outputs.issue_number }}"
+          BOT="${{ secrets.BOT_USERNAME }}"
 
-          echo "Waiting 60s for any re-triggered workflow runs..."
+          echo "Waiting 60 s for potential re-triggers…"
           sleep 60
 
-          echo "::group::Loop detection check"
-
-          # Count bot comments on the trigger issue
-          BOT_COMMENT_COUNT=$(gh api "repos/$REPO/issues/$ISSUE_NUMBER/comments" \
-            --jq "[.[] | select(.user.login == \"$BOT_USER\")] | length")
-
-          echo "Bot comments on trigger issue: $BOT_COMMENT_COUNT"
-
-          if [ "$BOT_COMMENT_COUNT" -gt 1 ]; then
-            echo "❌ LOOP DETECTED: Bot commented $BOT_COMMENT_COUNT times on the trigger issue!"
-            echo "This indicates the bot's own comment re-triggered the workflow."
+          N=$(gh api "repos/$REPO/issues/$ISSUE/comments" \
+            --jq "[.[] | select(.user.login == \"$BOT\")] | length")
+          echo "Bot comments on trigger issue: $N"
+          if [ "$N" -gt 1 ]; then
+            echo "❌ LOOP DETECTED – bot commented $N times"
             exit 1
           fi
+          echo "✅ No loop – single comment"
 
-          echo "✅ No loop detected — bot commented exactly once."
-          echo "::endgroup::"
-
-      # -----------------------------------------------------------------------
-      # 12. Cleanup Qdrant collection (always run)
-      # -----------------------------------------------------------------------
+      # ----- 12. Cleanup Qdrant (always) -----
       - name: Cleanup Qdrant collection
         if: always()
         run: |
-          echo "::group::Deleting Qdrant test collection"
-
-          # Delete the test collection via Qdrant REST API
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
             "${{ secrets.QDRANT_URL }}/collections/${{ env.TEST_COLLECTION }}" \
             -H "api-key: ${{ secrets.QDRANT_API_KEY }}" \
             -H "Content-Type: application/json")
+          echo "Qdrant cleanup: HTTP $CODE"
 
-          if [ "$RESPONSE" = "200" ] || [ "$RESPONSE" = "404" ]; then
-            echo "✅ Test collection cleaned up (HTTP $RESPONSE)"
-          else
-            echo "⚠️ Unexpected response when deleting collection: HTTP $RESPONSE"
-          fi
-
-          echo "::endgroup::"
-
-      # -----------------------------------------------------------------------
-      # 13. Update test repo README with results and post PR comment
-      # -----------------------------------------------------------------------
-      - name: Update test repo with results
+      # ----- 13. Update test-repo README with results -----
+      - name: Update test repo README
         if: always()
-        env:
-          GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
-          REPO="${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
-          BOT_COMMENTED="${{ steps.poll.outputs.bot_commented }}"
-          PR_NUMBER="${{ github.event.pull_request.number }}"
-          PR_SHA="${{ github.event.pull_request.head.sha }}"
-          RUN_ID="${{ github.run_id }}"
-          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${RUN_ID}"
-
-          # Update README with test results
-          rm -rf "${{ env.TEST_REPO_NAME }}_results"
-          gh repo clone "$REPO" "${{ env.TEST_REPO_NAME }}_results" || true
-          cd "${{ env.TEST_REPO_NAME }}_results" || exit 0
-
-          unset GH_TOKEN
-          echo "${{ secrets.BOT_PAT }}" | gh auth login --with-token
-          gh auth setup-git
-          git config user.name "${{ secrets.BOT_USERNAME }}"
+          rm -rf test-repo-results
+          gh repo clone "${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}" test-repo-results || exit 0
+          cd test-repo-results
+          git config user.name  "${{ secrets.BOT_USERNAME }}"
           git config user.email "makerslab.foss@gmail.com"
 
-          cat > README.md << EOF
-# Simili E2E Test Repository
+          BOT_OK="${{ steps.poll.outputs.bot_commented }}"
+          cat > README.md << RMEOF
+          # Simili E2E Test Repository
 
-> Auto-created by [PR #${PR_NUMBER}](https://github.com/${{ github.repository }}/pull/${PR_NUMBER}) E2E test run
+          | Detail | Value |
+          |--------|-------|
+          | **PR** | [#${{ github.event.pull_request.number }}](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}) |
+          | **Commit** | \`${GITHUB_SHA:0:7}\` |
+          | **Bot responded** | $([ "$BOT_OK" = "true" ] && echo "✅" || echo "❌") |
+          | **Date** | $(date -u '+%Y-%m-%d %H:%M UTC') |
 
-## Test Results
-
-| Detail | Value |
-|--------|-------|
-| **PR** | [#${PR_NUMBER}](https://github.com/${{ github.repository }}/pull/${PR_NUMBER}) |
-| **Commit** | \`${PR_SHA:0:7}\` |
-| **Run** | [#${RUN_ID}](${RUN_URL}) |
-| **Bot Responded** | $([ "$BOT_COMMENTED" = "true" ] && echo "✅ Yes" || echo "❌ No") |
-| **Created** | $(date -u '+%Y-%m-%d %H:%M UTC') |
-
-## What this repo tests
-
-1. **Seed issues** (#1-#5) — diverse issues for the similarity corpus
-2. **Trigger issue** (#6) — designed to match seed issue #1 (login crash)
-3. **Bot response** — verifies the bot detects the duplicate and posts a triage comment
-4. **Loop safety** — verifies the bot doesn't re-trigger itself
-EOF
+          Check the **Issues** tab to see the bot's triage comment.
+          RMEOF
 
           git add -A
           git diff --cached --quiet || {
-            git commit -m "chore: update README with E2E test results"
+            git commit -m "docs: update README with E2E results"
             git push origin HEAD:main
           }
 
-      - name: Post PR comment with test repo link
+      # ----- 14. PR comment with link to test repo -----
+      - name: Comment on PR
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           REPO="${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
-          BOT_COMMENTED="${{ steps.poll.outputs.bot_commented }}"
-          PR_NUMBER="${{ github.event.pull_request.number }}"
-          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          OK="${{ steps.poll.outputs.bot_commented }}"
+          ICON=$([ "$OK" = "true" ] && echo "✅" || echo "❌")
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --body "## 🧪 E2E Test
 
-          RESULT_EMOJI=$([ "$BOT_COMMENTED" = "true" ] && echo "✅" || echo "❌")
+          ${ICON} **Bot responded:** $([ "$OK" = "true" ] && echo "yes" || echo "no")
 
-          gh pr comment "$PR_NUMBER" --body "## 🧪 E2E Test Results
+          **Test repo →** [${REPO}](https://github.com/${REPO})
+          **Run →** [logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
-${RESULT_EMOJI} **Bot Response:** $([ "$BOT_COMMENTED" = "true" ] && echo "Bot detected duplicate and posted triage comment" || echo "Bot did not respond within timeout")
+          <sub>Auto-generated by E2E pipeline</sub>"
 
-**Test Repo:** [${REPO}](https://github.com/${REPO}) — inspect issues, comments, and workflow runs
-**Workflow Run:** [View logs](${RUN_URL})
-
-<sub>Auto-generated by E2E test pipeline</sub>"
-
-      # -----------------------------------------------------------------------
-      # 14. Summary
-      # -----------------------------------------------------------------------
+      # ----- 15. Summary -----
       - name: Test summary
         if: always()
         run: |
-          echo "## E2E Test Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Test Repo Created | ✅ |" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.poll.outputs.bot_commented }}" = "true" ]; then
-            echo "| Bot Responded | ✅ |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| Bot Responded | ❌ |" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "| Test Repo | [${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}](https://github.com/${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}) |" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## E2E Test Summary"
+            echo ""
+            echo "| Check | Result |"
+            echo "|-------|--------|"
+            echo "| Repo created | ✅ |"
+            if [ "${{ steps.poll.outputs.bot_commented }}" = "true" ]; then
+              echo "| Bot responded | ✅ |"
+            else
+              echo "| Bot responded | ❌ |"
+            fi
+            echo "| Test repo | [${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}](https://github.com/${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}) |"
+          } >> "$GITHUB_STEP_SUMMARY"
