@@ -404,7 +404,7 @@ jobs:
 
       # ----- 14. PR comment with link to test repo -----
       - name: Comment on PR
-        if: always() && (github.event_name == 'pull_request_review' || github.event_name == 'workflow_dispatch')
+        if: always() && (github.event_name == 'pull_request_target' || github.event_name == 'workflow_dispatch')
         env:
           GH_TOKEN: ${{ secrets.BOT_PAT }}
           PR_NUM: ${{ github.event.pull_request.number || inputs.pr_number }}
