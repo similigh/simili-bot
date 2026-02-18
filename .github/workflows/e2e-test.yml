@@ -54,8 +54,6 @@ jobs:
       # 1. Setup — Create temporary test repository
       # -----------------------------------------------------------------------
       - name: Create test repository
-        env:
-          GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
           echo "::group::Authenticating as bot user"
           echo "${{ secrets.BOT_PAT }}" | gh auth login --with-token
