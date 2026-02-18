@@ -62,7 +62,7 @@ jobs:
 
           echo "::group::Creating test repo ${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
           gh repo create "${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}" \
-            --public \
+            --private \
             --description "Simili E2E test repo (auto-created, will be deleted)" \
             --clone
           echo "::endgroup::"
