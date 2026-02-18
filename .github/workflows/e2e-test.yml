@@ -52,11 +52,14 @@ jobs:
 
       # ----- 1. Create test repo (public, so devs can inspect) -----
       - name: Create test repository
+        env:
+          B_PAT: ${{ secrets.BOT_PAT }}
+          B_NAME: ${{ secrets.BOT_USERNAME }}
         run: |
-          echo "${{ secrets.BOT_PAT }}" | gh auth login --with-token
+          echo "$B_PAT" | gh auth login --with-token
           gh auth setup-git
-          gh repo create "${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}" \
-            --public \
+          gh repo create "$B_NAME/${{ env.TEST_REPO_NAME }}" \
+            --private \
             --description "Simili E2E test – PR #${{ github.event.pull_request.number }}" \
             --clone
 
@@ -73,26 +76,28 @@ jobs:
           Auto-created by the Simili Bot E2E pipeline. Kept for inspection.
           READMEEOF
 
-          # .github/simili.yaml  (env-var refs for runtime, hardcoded collection)
+          # .github/simili.yaml
           mkdir -p .github
-          cat > .github/simili.yaml << CFGEOF
+          COLLECTION="${{ env.TEST_COLLECTION }}"
+          cat > .github/simili.yaml << 'CFGEOF'
           qdrant:
-            url: \${QDRANT_URL}
-            api_key: \${QDRANT_API_KEY}
-            collection: ${{ env.TEST_COLLECTION }}
+            url: ${QDRANT_URL}
+            api_key: ${QDRANT_API_KEY}
+            collection: %COLLECTION%
           embedding:
             provider: gemini
-            api_key: \${GEMINI_API_KEY}
+            api_key: ${GEMINI_API_KEY}
             model: gemini-embedding-001
             dimensions: 768
           llm:
             provider: gemini
-            api_key: \${GEMINI_API_KEY}
+            api_key: ${GEMINI_API_KEY}
             model: gemini-2.5-flash
           defaults:
             similarity_threshold: 0.65
             max_similar_to_show: 3
           CFGEOF
+          sed -i "s/%COLLECTION%/$COLLECTION/g" .github/simili.yaml
 
           git add -A
           git commit -m "chore: seed E2E test config"
@@ -102,13 +107,18 @@ jobs:
       - name: Set secrets on test repository
         env:
           GH_TOKEN: ${{ secrets.BOT_PAT }}
+          QDR_URL: ${{ secrets.QDRANT_URL }}
+          QDR_KEY: ${{ secrets.QDRANT_API_KEY }}
+          GEM_KEY: ${{ secrets.GEMINI_API_KEY }}
+          B_PAT: ${{ secrets.BOT_PAT }}
+          B_NAME: ${{ secrets.BOT_USERNAME }}
         run: |
           REPO="${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
-          echo "${{ secrets.QDRANT_URL }}"    | gh secret set QDRANT_URL    --repo "$REPO"
-          echo "${{ secrets.QDRANT_API_KEY }}" | gh secret set QDRANT_API_KEY --repo "$REPO"
-          echo "${{ secrets.GEMINI_API_KEY }}" | gh secret set GEMINI_API_KEY --repo "$REPO"
-          echo "${{ secrets.BOT_PAT }}"       | gh secret set GH_PAT        --repo "$REPO"
-          echo "${{ secrets.BOT_USERNAME }}"  | gh secret set BOT_USERNAME  --repo "$REPO"
+          gh secret set QDRANT_URL    --repo "$REPO" --body "$QDR_URL"
+          gh secret set QDRANT_API_KEY --repo "$REPO" --body "$QDR_KEY"
+          gh secret set GEMINI_API_KEY --repo "$REPO" --body "$GEM_KEY"
+          gh secret set GH_PAT        --repo "$REPO" --body "$B_PAT"
+          gh secret set BOT_USERNAME  --repo "$REPO" --body "$B_NAME"
 
       # ----- 4. Create 5 seed issues -----
       - name: Create seed issues
@@ -159,14 +169,15 @@ jobs:
           QDRANT_URL: ${{ secrets.QDRANT_URL }}
           QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TEST_COLLECTION: ${{ env.TEST_COLLECTION }}
         run: |
           REPO="${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
 
-          cat > "$RUNNER_TEMP/index-cfg.yaml" << IDXEOF
+          cat > "$RUNNER_TEMP/index-cfg.yaml" << 'IDXEOF'
           qdrant:
             url: ${QDRANT_URL}
             api_key: ${QDRANT_API_KEY}
-            collection: ${{ env.TEST_COLLECTION }}
+            collection: ${TEST_COLLECTION}
           embedding:
             provider: gemini
             api_key: ${GEMINI_API_KEY}
