@@ -27,6 +27,10 @@ permissions:
 env:
   TEST_REPO_NAME: "simili-e2e-${{ github.run_id }}"
   TEST_COLLECTION: "simili-e2e-test-${{ github.run_id }}"
+  # Bot username — not sensitive (visible in all URLs/logs).
+  # Declared as plain env var so GitHub does NOT mask it (it would
+  # be masked if derived from the BOT_USERNAME secret).
+  BOT_NAME: "gh-simili-bot"
 
 jobs:
   e2e-test:
@@ -52,20 +56,12 @@ jobs:
 
       # ----- 1. Create test repo (public, so devs can inspect) -----
       - name: Create test repository
-        id: create_repo
         env:
           B_PAT: ${{ secrets.BOT_PAT }}
         run: |
           echo "$B_PAT" | gh auth login --with-token
           gh auth setup-git
-          
-          # Write to GITHUB_OUTPUT (not GITHUB_ENV) — step outputs are NOT masked
-          # even when the value matches a secret.
-          B_NAME=$(gh api user -q .login)
-          echo "bot_name=$B_NAME" >> "$GITHUB_OUTPUT"
-          echo "✅ Bot User: $B_NAME"
-          
-          gh repo create "$B_NAME/${{ env.TEST_REPO_NAME }}" \
+          gh repo create "${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}" \
             --private \
             --description "Simili E2E test – PR #${{ github.event.pull_request.number }}" \
             --clone
@@ -74,7 +70,7 @@ jobs:
       - name: Seed test repository
         run: |
           cd "${{ env.TEST_REPO_NAME }}"
-          git config user.name  "${{ steps.create_repo.outputs.bot_name }}"
+          git config user.name  "${{ env.BOT_NAME }}"
           git config user.email "makerslab.foss@gmail.com"
 
           # README
@@ -118,9 +114,9 @@ jobs:
           QDR_KEY: ${{ secrets.QDRANT_API_KEY }}
           GEM_KEY: ${{ secrets.GEMINI_API_KEY }}
           B_PAT: ${{ secrets.BOT_PAT }}
-          B_NAME: ${{ steps.create_repo.outputs.bot_name }}
+          B_NAME: ${{ env.BOT_NAME }}
         run: |
-          REPO="${{ steps.create_repo.outputs.bot_name }}/${{ env.TEST_REPO_NAME }}"
+          REPO="${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}"
           gh secret set QDRANT_URL    --repo "$REPO" --body "$QDR_URL"
           gh secret set QDRANT_API_KEY --repo "$REPO" --body "$QDR_KEY"
           gh secret set GEMINI_API_KEY --repo "$REPO" --body "$GEM_KEY"
@@ -178,7 +174,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TEST_COLLECTION: ${{ env.TEST_COLLECTION }}
         run: |
-          REPO="${{ steps.create_repo.outputs.bot_name }}/${{ env.TEST_REPO_NAME }}"
+          REPO="${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}"
 
           cat > "$RUNNER_TEMP/index-cfg.yaml" << 'IDXEOF'
           qdrant:
@@ -209,9 +205,9 @@ jobs:
       - name: Enable Simili workflow
         run: |
           rm -rf test-repo-wf
-          gh repo clone "${{ steps.create_repo.outputs.bot_name }}/${{ env.TEST_REPO_NAME }}" test-repo-wf
+          gh repo clone "${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}" test-repo-wf
           cd test-repo-wf
-          git config user.name  "${{ steps.create_repo.outputs.bot_name }}"
+          git config user.name  "${{ env.BOT_NAME }}"
           git config user.email "makerslab.foss@gmail.com"
 
           mkdir -p .github/workflows
@@ -262,7 +258,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
-          REPO="${{ steps.create_repo.outputs.bot_name }}/${{ env.TEST_REPO_NAME }}"
+          REPO="${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}"
           URL=$(gh issue create --repo "$REPO" \
             --title "Application crashes when logging in with wrong password" \
             --body "The application throws an unhandled exception when invalid credentials are entered during the login flow. The crash occurs immediately after clicking the submit button. No error dialog is shown to the user.")
@@ -276,9 +272,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
-          REPO="${{ steps.create_repo.outputs.bot_name }}/${{ env.TEST_REPO_NAME }}"
+          REPO="${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}"
           ISSUE="${{ steps.trigger.outputs.issue_number }}"
-          BOT="${{ steps.create_repo.outputs.bot_name }}"
+          BOT="${{ env.BOT_NAME }}"
           MAX=30  # 30 × 10 s = 5 min
 
           for i in $(seq 1 $MAX); do
@@ -321,9 +317,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
-          REPO="${{ steps.create_repo.outputs.bot_name }}/${{ env.TEST_REPO_NAME }}"
+          REPO="${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}"
           ISSUE="${{ steps.trigger.outputs.issue_number }}"
-          BOT="${{ steps.create_repo.outputs.bot_name }}"
+          BOT="${{ env.BOT_NAME }}"
 
           echo "Waiting 60 s for potential re-triggers…"
           sleep 60
@@ -352,9 +348,9 @@ jobs:
         if: always()
         run: |
           rm -rf test-repo-results
-          gh repo clone "${{ steps.create_repo.outputs.bot_name }}/${{ env.TEST_REPO_NAME }}" test-repo-results || exit 0
+          gh repo clone "${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}" test-repo-results || exit 0
           cd test-repo-results
-          git config user.name  "${{ steps.create_repo.outputs.bot_name }}"
+          git config user.name  "${{ env.BOT_NAME }}"
           git config user.email "makerslab.foss@gmail.com"
 
           BOT_OK="${{ steps.poll.outputs.bot_commented }}"
@@ -383,7 +379,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          REPO="${{ steps.create_repo.outputs.bot_name }}/${{ env.TEST_REPO_NAME }}"
+          REPO="${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}"
           OK="${{ steps.poll.outputs.bot_commented }}"
           ICON=$([ "$OK" = "true" ] && echo "✅" || echo "❌")
           gh pr comment "${{ github.event.pull_request.number }}" \
@@ -412,5 +408,5 @@ jobs:
             else
               echo "| Bot responded | ❌ |"
             fi
-            echo "| Test repo | [${{ steps.create_repo.outputs.bot_name }}/${{ env.TEST_REPO_NAME }}](https://github.com/${{ steps.create_repo.outputs.bot_name }}/${{ env.TEST_REPO_NAME }}) |"
+            echo "| Test repo | [${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}](https://github.com/${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}) |"
           } >> "$GITHUB_STEP_SUMMARY"
