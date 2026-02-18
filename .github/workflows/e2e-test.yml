@@ -207,9 +207,9 @@ jobs:
       - name: Enable Simili workflow
         run: |
           rm -rf test-repo-wf
-          gh repo clone "${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}" test-repo-wf
+          gh repo clone "${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}" test-repo-wf
           cd test-repo-wf
-          git config user.name  "${{ secrets.BOT_USERNAME }}"
+          git config user.name  "${{ env.BOT_NAME }}"
           git config user.email "makerslab.foss@gmail.com"
 
           mkdir -p .github/workflows
@@ -260,7 +260,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
-          REPO="${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
+          REPO="${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}"
           URL=$(gh issue create --repo "$REPO" \
             --title "Application crashes when logging in with wrong password" \
             --body "The application throws an unhandled exception when invalid credentials are entered during the login flow. The crash occurs immediately after clicking the submit button. No error dialog is shown to the user.")
@@ -274,9 +274,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
-          REPO="${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
+          REPO="${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}"
           ISSUE="${{ steps.trigger.outputs.issue_number }}"
-          BOT="${{ secrets.BOT_USERNAME }}"
+          BOT="${{ env.BOT_NAME }}"
           MAX=30  # 30 × 10 s = 5 min
 
           for i in $(seq 1 $MAX); do
@@ -319,9 +319,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
-          REPO="${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
+          REPO="${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}"
           ISSUE="${{ steps.trigger.outputs.issue_number }}"
-          BOT="${{ secrets.BOT_USERNAME }}"
+          BOT="${{ env.BOT_NAME }}"
 
           echo "Waiting 60 s for potential re-triggers…"
           sleep 60
@@ -350,9 +350,9 @@ jobs:
         if: always()
         run: |
           rm -rf test-repo-results
-          gh repo clone "${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}" test-repo-results || exit 0
+          gh repo clone "${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}" test-repo-results || exit 0
           cd test-repo-results
-          git config user.name  "${{ secrets.BOT_USERNAME }}"
+          git config user.name  "${{ env.BOT_NAME }}"
           git config user.email "makerslab.foss@gmail.com"
 
           BOT_OK="${{ steps.poll.outputs.bot_commented }}"
@@ -381,7 +381,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          REPO="${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
+          REPO="${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}"
           OK="${{ steps.poll.outputs.bot_commented }}"
           ICON=$([ "$OK" = "true" ] && echo "✅" || echo "❌")
           gh pr comment "${{ github.event.pull_request.number }}" \
@@ -409,5 +409,5 @@ jobs:
             else
               echo "| Bot responded | ❌ |"
             fi
-            echo "| Test repo | [${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}](https://github.com/${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}) |"
+            echo "| Test repo | [${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}](https://github.com/${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}) |"
           } >> "$GITHUB_STEP_SUMMARY"
