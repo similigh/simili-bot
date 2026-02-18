@@ -186,11 +186,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
-          
-          # Enable actions and allow all actions (needed for similigh/simili-bot@ reference)
-          jq -n '{"enabled": true, "allowed_actions": "all"}' | \
-          gh api --method PUT "repos/$REPO/actions/permissions" --input -
-
       # -----------------------------------------------------------------------
       # 5. Create 5 seed issues (diversity for similarity corpus)
       # -----------------------------------------------------------------------
