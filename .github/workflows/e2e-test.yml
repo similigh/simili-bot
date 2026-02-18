@@ -244,14 +244,6 @@ jobs:
                     config_path: .github/simili.yaml
                     command: process
                     github_token: ${{ secrets.GH_PAT }}
-                  # Enable verbose logging for E2E debugging
-                  args:
-                    - process
-                    - --verbose
-                    - --issue
-                    - /github/workflow/event.json
-                    - --config
-                    - .github/simili.yaml
           WFEOF
 
           sed -i "s|__PR_SHA__|${{ github.event.pull_request.head.sha }}|g" \
