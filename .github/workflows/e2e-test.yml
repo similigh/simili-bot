@@ -151,6 +151,7 @@ jobs:
                     QDRANT_URL: ${{ secrets.QDRANT_URL }}
                     QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
                     GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+                    SIMILI_E2E_TEST_USER: ${{ secrets.BOT_USERNAME }}
                   with:
                     config_path: .github/simili.yaml
                     command: process

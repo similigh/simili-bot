@@ -9,6 +9,7 @@ package steps
 
 import (
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -18,7 +19,7 @@ import (
 )
 
 // Gatekeeper checks if the issue's repository is enabled and applies cooldown logic.
-type Gatekeeper struct{
+type Gatekeeper struct {
 	github *github.Client
 }
 
@@ -100,6 +101,11 @@ func (s *Gatekeeper) Run(ctx *pipeline.Context) error {
 // isBotAuthor returns true if the given username matches a known bot pattern
 // or is in the user-configured bot_users list.
 func isBotAuthor(author string, configBotUsers []string) bool {
+	// E2E Test Bypass: If the author matches the configured E2E test user, allow it.
+	if e2eUser := os.Getenv("SIMILI_E2E_TEST_USER"); e2eUser != "" && strings.EqualFold(author, e2eUser) {
+		return false
+	}
+
 	// Built-in heuristics
 	if strings.HasSuffix(author, "[bot]") ||
 		strings.HasPrefix(author, "gh-simili") ||
