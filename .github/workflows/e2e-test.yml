@@ -57,6 +57,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
+          echo "::group::Authenticating as bot user"
+          echo "${{ secrets.BOT_PAT }}" | gh auth login --with-token
+          gh auth status
+          echo "::endgroup::"
+
           echo "::group::Creating test repo ${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
           gh repo create "${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}" \
             --public \
