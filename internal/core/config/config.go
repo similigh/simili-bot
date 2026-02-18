@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-05
+// Last Modified: 2026-02-18
 
 // Package config handles loading and merging Simili configuration.
 package config
@@ -126,6 +126,9 @@ func Load(path string) (*Config, error) {
 	}
 
 	cfg.applyDefaults()
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 	return cfg, nil
 }
 
@@ -144,6 +147,9 @@ func LoadWithInheritance(path string, fetcher func(ref string) ([]byte, error)) 
 
 	if cfg.Extends == "" {
 		cfg.applyDefaults()
+		if err := cfg.Validate(); err != nil {
+			return nil, err
+		}
 		return cfg, nil
 	}
 
@@ -161,6 +167,9 @@ func LoadWithInheritance(path string, fetcher func(ref string) ([]byte, error)) 
 	// Merge: child overrides parent
 	merged := mergeConfigs(parentCfg, cfg)
 	merged.applyDefaults()
+	if err := merged.Validate(); err != nil {
+		return nil, err
+	}
 
 	return merged, nil
 }
@@ -176,6 +185,33 @@ func parseRaw(data []byte) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// Validate ensures required configuration fields are present.
+func (c *Config) Validate() error {
+	requiredFields := []struct {
+		name   string
+		envVar string
+		value  string
+	}{
+		{name: "qdrant.url", envVar: "QDRANT_URL", value: c.Qdrant.URL},
+		{name: "qdrant.api_key", envVar: "QDRANT_API_KEY", value: c.Qdrant.APIKey},
+		{name: "qdrant.collection", envVar: "QDRANT_COLLECTION", value: c.Qdrant.Collection},
+		{name: "embedding.api_key", envVar: "EMBEDDING_API_KEY", value: c.Embedding.APIKey},
+		{name: "llm.api_key", envVar: "LLM_API_KEY", value: c.LLM.APIKey},
+	}
+
+	for _, field := range requiredFields {
+		if strings.TrimSpace(field.value) == "" {
+			return fmt.Errorf(
+				"config validation failed: %s is empty (check %s environment variable)",
+				field.name,
+				field.envVar,
+			)
+		}
+	}
+
+	return nil
 }
 
 // FindConfigPath searches for a config file in standard locations.
