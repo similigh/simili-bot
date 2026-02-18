@@ -16,6 +16,9 @@ permissions:
 jobs:
   triage:
     runs-on: ubuntu-latest
+    # Don't run when the bot itself creates a comment — prevents the feedback loop
+    # where the bot's own comment re-triggers the workflow.
+    if: github.actor != 'gh-simili-bot' && github.actor != 'github-actions[bot]'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

@@ -227,6 +227,8 @@ jobs:
           jobs:
             triage:
               runs-on: ubuntu-latest
+              # Prevent the bot's own comment from re-triggering the workflow
+              if: github.actor != 'gh-simili-bot' && github.actor != 'github-actions[bot]'
               steps:
                 - name: Checkout
                   uses: actions/checkout@v4
