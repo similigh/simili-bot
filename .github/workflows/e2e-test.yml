@@ -16,7 +16,7 @@
 name: Simili E2E Test
 
 on:
-  pull_request:
+  pull_request_target:
     branches: [main]
     types: [opened, synchronize, reopened]
 
@@ -37,6 +37,8 @@ jobs:
     name: E2E Integration Test
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Require manual approval (for forks) via GitHub Environments
+    environment: e2e-test
 
     steps:
       # ----- 0. Validate secrets -----
@@ -154,6 +156,8 @@ jobs:
       - name: Checkout PR code
         uses: actions/checkout@v4
         with:
+          # Explicitly checkout the PR code (since pull_request_target defaults to base)
+          ref: ${{ github.event.pull_request.head.sha }}
           path: simili-src
 
       - name: Set up Go
