@@ -84,7 +84,7 @@ jobs:
           
           # Configure user identity
           git config user.name "${{ secrets.BOT_USERNAME }}"
-          git config user.email "${{ secrets.BOT_USERNAME }}@users.noreply.github.com"
+          git config user.email "makerslab.foss@gmail.com"
 
           # --- README ---
           cat > README.md << 'EOF'
