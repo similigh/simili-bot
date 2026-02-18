@@ -406,7 +406,7 @@ jobs:
       - name: Comment on PR
         if: always() && (github.event_name == 'pull_request_review' || github.event_name == 'workflow_dispatch')
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.BOT_PAT }}
           PR_NUM: ${{ github.event.pull_request.number || inputs.pr_number }}
           CO_SHA: ${{ github.event.pull_request.head.sha || inputs.sha }}
         run: |
