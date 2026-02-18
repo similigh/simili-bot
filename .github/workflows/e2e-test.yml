@@ -108,6 +108,7 @@ jobs:
           echo "${{ secrets.QDRANT_API_KEY }}" | gh secret set QDRANT_API_KEY --repo "$REPO"
           echo "${{ secrets.GEMINI_API_KEY }}" | gh secret set GEMINI_API_KEY --repo "$REPO"
           echo "${{ secrets.BOT_PAT }}"       | gh secret set GH_PAT        --repo "$REPO"
+          echo "${{ secrets.BOT_USERNAME }}"  | gh secret set BOT_USERNAME  --repo "$REPO"
 
       # ----- 4. Create 5 seed issues -----
       - name: Create seed issues
@@ -222,6 +223,7 @@ jobs:
                     QDRANT_URL: ${{ secrets.QDRANT_URL }}
                     QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
                     GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+                    SIMILI_E2E_TEST_USER: ${{ secrets.BOT_USERNAME }}
                   with:
                     config_path: .github/simili.yaml
                     command: process
