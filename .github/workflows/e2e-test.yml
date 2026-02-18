@@ -141,6 +141,7 @@ jobs:
           echo "${{ secrets.QDRANT_URL }}" | gh secret set QDRANT_URL --repo "$REPO"
           echo "${{ secrets.QDRANT_API_KEY }}" | gh secret set QDRANT_API_KEY --repo "$REPO"
           echo "${{ secrets.GEMINI_API_KEY }}" | gh secret set GEMINI_API_KEY --repo "$REPO"
+          echo "${{ secrets.BOT_PAT }}" | gh secret set GH_PAT --repo "$REPO"
           echo "::endgroup::"
 
       # -----------------------------------------------------------------------
@@ -301,7 +302,7 @@ jobs:
                   with:
                     config_path: .github/simili.yaml
                     command: process
-                    github_token: ${{ secrets.GITHUB_TOKEN }}
+                    github_token: ${{ secrets.GH_PAT }}
           WORKFLOW_EOF
           
           # Replace the placeholder with the actual PR SHA
