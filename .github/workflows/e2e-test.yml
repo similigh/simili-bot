@@ -79,6 +79,7 @@ jobs:
 
           
           # Set up authentication for git push using gh CLI
+          unset GH_TOKEN
           echo "${{ secrets.BOT_PAT }}" | gh auth login --with-token
           gh auth setup-git
           
