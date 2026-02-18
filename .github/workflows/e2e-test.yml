@@ -123,6 +123,8 @@ jobs:
           EOF
 
           # Commit and push
+          
+          # Commit and push
           git add -A
           git commit -m "chore: seed E2E test repo with Simili config"
           git push origin HEAD:main
@@ -239,6 +241,81 @@ jobs:
       # -----------------------------------------------------------------------
       - name: Wait for index to settle
         run: sleep 15
+
+      # -----------------------------------------------------------------------
+      # 7b. Enable Workflow — Add triage.yml so only new issues trigger it
+      # -----------------------------------------------------------------------
+      - name: Enable Simili workflow
+        env:
+          GH_TOKEN: ${{ secrets.BOT_PAT }}
+        run: |
+          set -x
+          # Clone the repo deeply to ensure history if needed, though shallow is fine.
+          # We need to clone again because previous steps modified it or context is lost/different.
+          # Cloning to a unique directory to avoid conflicts.
+          
+          rm -rf "${{ env.TEST_REPO_NAME }}_workflow"
+          echo "::group::Cloning test repo to add workflow"
+          gh repo clone "${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}" "${{ env.TEST_REPO_NAME }}_workflow"
+          cd "${{ env.TEST_REPO_NAME }}_workflow"
+          echo "::endgroup::"
+
+          # Set up authentication for git push using gh CLI
+          unset GH_TOKEN
+          echo "${{ secrets.BOT_PAT }}" | gh auth login --with-token
+          gh auth setup-git
+          
+          # Configure user identity
+          git config user.name "${{ secrets.BOT_USERNAME }}"
+          git config user.email "makerslab.foss@gmail.com"
+
+          # --- .github/workflows/triage.yml ---
+          mkdir -p .github/workflows
+          cat > .github/workflows/triage.yml << 'WORKFLOW_EOF'
+          name: Simili Triage
+          
+          on:
+            issues:
+              types: [opened, edited, reopened]
+            issue_comment:
+              types: [created]
+          
+          permissions:
+            contents: read
+            issues: write
+          
+          jobs:
+            triage:
+              runs-on: ubuntu-latest
+              steps:
+                - name: Checkout test repo
+                  uses: actions/checkout@v4
+          
+                - name: Run Simili Bot
+                  uses: similigh/simili-bot@__PR_SHA__
+                  env:
+                    QDRANT_URL: ${{ secrets.QDRANT_URL }}
+                    QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+                    GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+                    SIMILI_E2E_TEST_USER: ${{ secrets.BOT_USERNAME }}
+                  with:
+                    config_path: .github/simili.yaml
+                    command: process
+                    github_token: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_EOF
+          
+          # Replace the placeholder with the actual PR SHA
+          sed -i "s|__PR_SHA__|${{ github.event.pull_request.head.sha }}|g" .github/workflows/triage.yml
+          
+          # Commit and push
+          git add -A
+          git commit -m "chore: enable Simili Triage workflow"
+          git push origin HEAD:main
+          
+          echo "::group::Waiting for workflow registration"
+          echo "Sleeping for 10 seconds to allow GitHub to register the new workflow..."
+          sleep 10
+          echo "::endgroup::"
 
       # -----------------------------------------------------------------------
       # 8. Create trigger issue (designed to match seed issue #1)
