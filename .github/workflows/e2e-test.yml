@@ -19,6 +19,13 @@ on:
   pull_request_review:
     types: [submitted]
   workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Commit SHA to test (e.g. from a PR head)'
+        required: true
+      pr_number:
+        description: 'PR Number (for reporting)'
+        required: true
 
 permissions:
   contents: read
@@ -153,12 +160,16 @@ jobs:
             --body "The navigation menu overlaps with the main content area on iPhone 12 and below when using Safari. The hamburger menu does not collapse properly after selecting a menu item."
 
       # ----- 5. Build CLI from PR & index seed issues -----
+      # ----- 5. Build CLI from PR & index seed issues -----
       - name: Checkout PR code
         uses: actions/checkout@v4
         with:
-          # Explicitly checkout the PR code (since pull_request_target defaults to base)
-          ref: ${{ github.event.pull_request.head.sha }}
+          # Explicitly checkout the PR code
+          # If triggered by review: pull_request.head.sha
+          # If manual: inputs.sha
+          ref: ${{ github.event.pull_request.head.sha || inputs.sha }}
           path: simili-src
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -252,8 +263,11 @@ jobs:
                     command: process
           WFEOF
 
-          sed -i "s|__PR_SHA__|${{ github.event.pull_request.head.sha }}|g" \
-            .github/workflows/triage.yml
+          # Generate workflow from template
+          # Uses the PR SHA so we test the PR code, not main
+          # Fallback to inputs.sha for manual dispatch
+          SHA="${{ github.event.pull_request.head.sha || inputs.sha }}"
+          sed -i "s|__PR_SHA__|$SHA|g" .github/workflows/triage.yml
 
           git add -A
           git commit -m "chore: enable Simili Triage workflow"
@@ -356,6 +370,11 @@ jobs:
       # ----- 13. Update test-repo README with results -----
       - name: Update test repo README
         if: always()
+        env:
+          GH_TOKEN: ${{ secrets.BOT_PAT }}
+          # Fallback to manual inputs
+          PR_NUM: ${{ github.event.pull_request.number || inputs.pr_number }}
+          CO_SHA: ${{ github.event.pull_request.head.sha || inputs.sha }}
         run: |
           rm -rf test-repo-results
           gh repo clone "${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}" test-repo-results || exit 0
@@ -369,8 +388,8 @@ jobs:
 
           | Detail | Value |
           |--------|-------|
-          | **PR** | [#${{ github.event.pull_request.number }}](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}) |
-          | **Commit** | \`${GITHUB_SHA:0:7}\` |
+          | **PR** | [#${PR_NUM}](https://github.com/${{ github.repository }}/pull/${PR_NUM}) |
+          | **Commit** | \`${CO_SHA:0:7}\` |
           | **Bot responded** | $([ "$BOT_OK" = "true" ] && echo "✅" || echo "❌") |
           | **Date** | $(date -u '+%Y-%m-%d %H:%M UTC') |
 
@@ -385,14 +404,16 @@ jobs:
 
       # ----- 14. PR comment with link to test repo -----
       - name: Comment on PR
-        if: always() && github.event_name == 'pull_request_review'
+        if: always() && (github.event_name == 'pull_request_review' || github.event_name == 'workflow_dispatch')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUM: ${{ github.event.pull_request.number || inputs.pr_number }}
+          CO_SHA: ${{ github.event.pull_request.head.sha || inputs.sha }}
         run: |
           REPO="${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}"
           OK="${{ steps.poll.outputs.bot_commented }}"
           ICON=$([ "$OK" = "true" ] && echo "✅" || echo "❌")
-          gh pr comment "${{ github.event.pull_request.number }}" \
+          gh pr comment "$PR_NUM" \
             --repo "${{ github.repository }}" \
             --body "## 🧪 E2E Test
 
