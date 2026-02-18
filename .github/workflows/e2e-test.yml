@@ -54,10 +54,15 @@ jobs:
       - name: Create test repository
         env:
           B_PAT: ${{ secrets.BOT_PAT }}
-          B_NAME: ${{ secrets.BOT_USERNAME }}
         run: |
           echo "$B_PAT" | gh auth login --with-token
           gh auth setup-git
+          
+          # Get bot username unmasked for the gatekeeper bypass
+          B_NAME=$(gh api user -q .login)
+          echo "BOT_NAME=$B_NAME" >> "$GITHUB_ENV"
+          echo "✅ Bot User: $B_NAME"
+          
           gh repo create "$B_NAME/${{ env.TEST_REPO_NAME }}" \
             --private \
             --description "Simili E2E test – PR #${{ github.event.pull_request.number }}" \
@@ -111,9 +116,9 @@ jobs:
           QDR_KEY: ${{ secrets.QDRANT_API_KEY }}
           GEM_KEY: ${{ secrets.GEMINI_API_KEY }}
           B_PAT: ${{ secrets.BOT_PAT }}
-          B_NAME: ${{ secrets.BOT_USERNAME }}
+          B_NAME: ${{ env.BOT_NAME }}
         run: |
-          REPO="${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
+          REPO="${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}"
           gh secret set QDRANT_URL    --repo "$REPO" --body "$QDR_URL"
           gh secret set QDRANT_API_KEY --repo "$REPO" --body "$QDR_KEY"
           gh secret set GEMINI_API_KEY --repo "$REPO" --body "$GEM_KEY"
@@ -171,7 +176,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TEST_COLLECTION: ${{ env.TEST_COLLECTION }}
         run: |
-          REPO="${{ secrets.BOT_USERNAME }}/${{ env.TEST_REPO_NAME }}"
+          REPO="${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}"
 
           cat > "$RUNNER_TEMP/index-cfg.yaml" << 'IDXEOF'
           qdrant:
@@ -239,6 +244,14 @@ jobs:
                     config_path: .github/simili.yaml
                     command: process
                     github_token: ${{ secrets.GH_PAT }}
+                  # Enable verbose logging for E2E debugging
+                  args:
+                    - process
+                    - --verbose
+                    - --issue
+                    - /github/workflow/event.json
+                    - --config
+                    - .github/simili.yaml
           WFEOF
 
           sed -i "s|__PR_SHA__|${{ github.event.pull_request.head.sha }}|g" \
