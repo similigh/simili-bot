@@ -156,7 +156,7 @@ jobs:
           # Commit and push
           git add -A
           git commit -m "chore: seed E2E test repo with Simili config"
-          git push origin main
+          git push origin HEAD:main
 
       # -----------------------------------------------------------------------
       # 3. Copy secrets to test repo (so its workflows can use them)
