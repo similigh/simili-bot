@@ -68,7 +68,7 @@ jobs:
           echo "::endgroup::"
 
       # -----------------------------------------------------------------------
-      # 2. Seed — Push README, simili.yaml config, and triage workflow
+      # 2. Seed — Push README and simili.yaml config
       # -----------------------------------------------------------------------
       - name: Seed test repository with config files
         env:
@@ -121,45 +121,6 @@ jobs:
           bot_users:
             - "${{ secrets.BOT_USERNAME }}"
           EOF
-
-          # --- .github/workflows/triage.yml ---
-          # This workflow uses the PR version of simili-bot (by SHA)
-          mkdir -p .github/workflows
-          cat > .github/workflows/triage.yml << 'WORKFLOW_EOF'
-          name: Simili Triage
-
-          on:
-            issues:
-              types: [opened, edited, reopened]
-            issue_comment:
-              types: [created]
-
-          permissions:
-            contents: read
-            issues: write
-
-          jobs:
-            triage:
-              runs-on: ubuntu-latest
-              steps:
-                - name: Checkout test repo
-                  uses: actions/checkout@v4
-
-                - name: Run Simili Bot
-                  uses: similigh/simili-bot@__PR_SHA__
-                  env:
-                    QDRANT_URL: ${{ secrets.QDRANT_URL }}
-                    QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
-                    GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-                    SIMILI_E2E_TEST_USER: ${{ secrets.BOT_USERNAME }}
-                  with:
-                    config_path: .github/simili.yaml
-                    command: process
-                    github_token: ${{ secrets.GITHUB_TOKEN }}
-          WORKFLOW_EOF
-
-          # Replace the placeholder with the actual PR SHA
-          sed -i "s|__PR_SHA__|${{ github.event.pull_request.head.sha }}|g" .github/workflows/triage.yml
 
           # Commit and push
           git add -A
