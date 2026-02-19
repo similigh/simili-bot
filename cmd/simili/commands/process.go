@@ -10,8 +10,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
+	githubapi "github.com/google/go-github/v60/github"
 	"github.com/spf13/cobra"
 
 	"github.com/similigh/simili-bot/internal/core/config"
@@ -35,7 +37,9 @@ var processCmd = &cobra.Command{
 	Use:   "process",
 	Short: "Process a single issue through the pipeline",
 	Long: `Process a single issue through the Simili-Bot pipeline.
-You can provide the issue data via a JSON file or specify the issue number (if fetching from GitHub).`,
+You can provide issue data via --issue <file>, or fetch directly from GitHub with --number.
+For direct fetch, use --repo owner/name, or --org owner --repo name.
+If --repo/--org are omitted, GITHUB_REPOSITORY (owner/name) is used as fallback.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		runProcess()
 	},
@@ -131,46 +135,59 @@ func runProcess() {
 				enrichIssueFromGitHubEvent(&issue, raw)
 			}
 		}
-	} else {
-		// TODO: Fetch from GitHub if not provided (Phase 9/10)
-		fmt.Println("Please provide --issue <file>")
-		os.Exit(1)
-	}
 
-	// Override if flags provided
-	if orgName != "" {
-		issue.Org = orgName
-	}
-	if repoName != "" {
-		issue.Repo = repoName
-	}
-	// Fallback to Env Vars if valid and still empty
-	if issue.Org == "" || issue.Repo == "" {
-		if ghRepo := os.Getenv("GITHUB_REPOSITORY"); ghRepo != "" {
-			// owner/repo
-			// We need to import strings to split safely
-			// Since I can't guarantee imports easily without seeing file imports,
-			// I'll assume simple looping or add imports in a separate step if needed.
-			// Actually process.go doesn't import strings yet.
-			// Let's rely on standard split logic or just add the import.
-			// I'll add "strings" to imports in a separate step to be safe.
-			// For now, let's just do a manual scan
-			for i := 0; i < len(ghRepo); i++ {
-				if ghRepo[i] == '/' {
-					if issue.Org == "" {
-						issue.Org = ghRepo[:i]
-					}
-					if issue.Repo == "" {
-						issue.Repo = ghRepo[i+1:]
-					}
-					break
+		// Apply optional overrides when --issue is used
+		if repoName != "" && strings.Contains(repoName, "/") {
+			parts := strings.SplitN(repoName, "/", 2)
+			if len(parts) == 2 {
+				if strings.TrimSpace(parts[0]) != "" {
+					issue.Org = strings.TrimSpace(parts[0])
+				}
+				if strings.TrimSpace(parts[1]) != "" {
+					issue.Repo = strings.TrimSpace(parts[1])
 				}
 			}
+		} else {
+			if orgName != "" {
+				issue.Org = orgName
+			}
+			if repoName != "" {
+				issue.Repo = repoName
+			}
 		}
-	}
+		if orgName != "" {
+			issue.Org = orgName
+		}
+		if issueNum != 0 {
+			issue.Number = issueNum
+		}
+	} else if issueNum != 0 {
+		org, repo := resolveIssueRepo(orgName, repoName)
+		if org == "" || repo == "" {
+			fmt.Println("Error: when using --number, provide --repo owner/name or --org owner --repo name, or set GITHUB_REPOSITORY")
+			os.Exit(1)
+		}
 
-	if issueNum != 0 {
-		issue.Number = issueNum
+		token := os.Getenv("TRANSFER_TOKEN")
+		if token == "" {
+			token = os.Getenv("GITHUB_TOKEN")
+		}
+		if token == "" {
+			fmt.Println("Error: GITHUB_TOKEN (or TRANSFER_TOKEN) is required to fetch issue from GitHub")
+			os.Exit(1)
+		}
+
+		ghClient := github.NewClient(context.Background(), token)
+		ghIssue, err := ghClient.GetIssue(context.Background(), org, repo, issueNum)
+		if err != nil {
+			fmt.Printf("Error fetching issue from GitHub: %v\n", err)
+			os.Exit(1)
+		}
+
+		issue = githubIssueToPipelineIssue(ghIssue, org, repo)
+	} else {
+		fmt.Println("Please provide --issue <file> or --number <issue-number>")
+		os.Exit(1)
 	}
 
 	if verbose {
@@ -261,6 +278,66 @@ func runProcess() {
 	fmt.Println("[Simili-Bot] Starting pipeline...")
 	runPipeline(deps, stepNames, &issue, cfg)
 	fmt.Println("[Simili-Bot] Pipeline completed")
+}
+
+func resolveIssueRepo(flagOrg, flagRepo string) (string, string) {
+	if strings.Contains(flagRepo, "/") {
+		parts := strings.SplitN(flagRepo, "/", 2)
+		if len(parts) == 2 {
+			return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+		}
+	}
+
+	if strings.TrimSpace(flagOrg) != "" && strings.TrimSpace(flagRepo) != "" {
+		return strings.TrimSpace(flagOrg), strings.TrimSpace(flagRepo)
+	}
+
+	if ghRepo := strings.TrimSpace(os.Getenv("GITHUB_REPOSITORY")); ghRepo != "" {
+		parts := strings.SplitN(ghRepo, "/", 2)
+		if len(parts) == 2 {
+			return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+		}
+	}
+
+	return "", ""
+}
+
+func githubIssueToPipelineIssue(ghIssue *githubapi.Issue, org, repo string) pipeline.Issue {
+	if ghIssue == nil {
+		return pipeline.Issue{Org: org, Repo: repo, EventType: "issues", EventAction: "opened"}
+	}
+
+	labels := make([]string, 0, len(ghIssue.Labels))
+	for _, label := range ghIssue.Labels {
+		if label != nil && label.Name != nil && *label.Name != "" {
+			labels = append(labels, *label.Name)
+		}
+	}
+
+	createdAt := time.Time{}
+	if ghIssue.CreatedAt != nil {
+		createdAt = ghIssue.CreatedAt.Time
+	}
+
+	author := ""
+	if ghIssue.User != nil {
+		author = ghIssue.User.GetLogin()
+	}
+
+	return pipeline.Issue{
+		Org:         org,
+		Repo:        repo,
+		Number:      ghIssue.GetNumber(),
+		Title:       ghIssue.GetTitle(),
+		Body:        ghIssue.GetBody(),
+		State:       ghIssue.GetState(),
+		Labels:      labels,
+		Author:      author,
+		URL:         ghIssue.GetHTMLURL(),
+		CreatedAt:   createdAt,
+		EventType:   "issues",
+		EventAction: "opened",
+	}
 }
 
 func enrichIssueFromGitHubEvent(issue *pipeline.Issue, raw map[string]interface{}) {
