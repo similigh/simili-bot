@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	githubapi "github.com/google/go-github/v60/github"
 	"github.com/similigh/simili-bot/internal/core/pipeline"
 )
 
@@ -113,5 +114,54 @@ func TestEnrichIssueFromGitHubEvent_PRComment(t *testing.T) {
 	}
 	if issue.Number != 42 {
 		t.Fatalf("expected issue number 42, got %d", issue.Number)
+	}
+}
+
+func TestGithubIssueToPipelineIssue(t *testing.T) {
+	createdAt := githubapi.Timestamp{Time: time.Date(2026, 2, 13, 10, 0, 0, 0, time.UTC)}
+	ghIssue := &githubapi.Issue{
+		Number:    githubapi.Int(17),
+		Title:     githubapi.String("feat: fetch issue directly"),
+		Body:      githubapi.String("Implement CLI support"),
+		State:     githubapi.String("open"),
+		HTMLURL:   githubapi.String("https://github.com/similigh/simili-bot/issues/17"),
+		CreatedAt: &createdAt,
+		User:      &githubapi.User{Login: githubapi.String("maintainer")},
+		Labels: []*githubapi.Label{
+			{Name: githubapi.String("enhancement")},
+			{Name: githubapi.String("cli")},
+		},
+	}
+
+	issue := githubIssueToPipelineIssue(ghIssue, "similigh", "simili-bot")
+
+	if issue.Org != "similigh" || issue.Repo != "simili-bot" || issue.Number != 17 {
+		t.Fatalf("unexpected issue identity: %+v", issue)
+	}
+	if issue.Title != "feat: fetch issue directly" || issue.Body != "Implement CLI support" {
+		t.Fatalf("unexpected title/body: %+v", issue)
+	}
+	if issue.State != "open" || issue.Author != "maintainer" || issue.URL == "" {
+		t.Fatalf("expected state/author/url parsed, got %+v", issue)
+	}
+	if len(issue.Labels) != 2 || issue.Labels[0] != "enhancement" || issue.Labels[1] != "cli" {
+		t.Fatalf("unexpected labels: %+v", issue.Labels)
+	}
+	if !issue.CreatedAt.Equal(createdAt.Time) {
+		t.Fatalf("expected created_at to be parsed, got %v", issue.CreatedAt)
+	}
+	if issue.EventType != "issues" || issue.EventAction != "opened" {
+		t.Fatalf("expected issues/opened event, got %s/%s", issue.EventType, issue.EventAction)
+	}
+}
+
+func TestGithubIssueToPipelineIssue_NilIssue(t *testing.T) {
+	issue := githubIssueToPipelineIssue(nil, "similigh", "simili-bot")
+
+	if issue.Org != "similigh" || issue.Repo != "simili-bot" {
+		t.Fatalf("unexpected org/repo for nil issue: %+v", issue)
+	}
+	if issue.EventType != "issues" || issue.EventAction != "opened" {
+		t.Fatalf("expected default issues/opened for nil issue, got %s/%s", issue.EventType, issue.EventAction)
 	}
 }

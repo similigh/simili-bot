@@ -35,6 +35,15 @@ func (s *SimilaritySearch) Name() string {
 	return "similarity_search"
 }
 
+func normalizeSimilarThreadType(rawType string) string {
+	switch strings.ToLower(strings.TrimSpace(rawType)) {
+	case "pr", "pull_request", "pull request":
+		return "pr"
+	default:
+		return "issue"
+	}
+}
+
 // Run searches for similar issues.
 func (s *SimilaritySearch) Run(ctx *pipeline.Context) error {
 	// Skip if transfer is detected (duplicate detection not needed)
@@ -129,6 +138,7 @@ func (s *SimilaritySearch) Run(ctx *pipeline.Context) error {
 		if state == "" {
 			state = "unknown"
 		}
+		threadType, _ := res.Payload["type"].(string)
 
 		issue := pipeline.SimilarIssue{
 			Number:     number,
@@ -136,6 +146,7 @@ func (s *SimilaritySearch) Run(ctx *pipeline.Context) error {
 			Body:       fullText,
 			URL:        url,
 			State:      state,
+			Type:       normalizeSimilarThreadType(threadType),
 			Similarity: float64(res.Score),
 		}
 		foundIssues = append(foundIssues, issue)
