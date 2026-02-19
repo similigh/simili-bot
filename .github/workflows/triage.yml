@@ -8,6 +8,10 @@ on:
   issue_comment:
     types: [created]
 
+concurrency:
+  group: simili-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   issues: write
