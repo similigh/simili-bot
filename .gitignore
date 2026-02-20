@@ -33,6 +33,5 @@ go.work.sum
 .env.local
 
 # Local binaries and configs
-simili
-
+/simili
 

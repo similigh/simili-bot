@@ -339,12 +339,13 @@ func initializeDependencies(cfg *config.Config) (*pipeline.Dependencies, error) 
 		llmModel = envModel
 	}
 	llm, err := gemini.NewLLMClient(llmKey, llmModel)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize LLM client: %w", err)
-	}
-	deps.LLMClient = llm
-	if verbose {
-		fmt.Printf("✓ Initialized LLM client (%s) with model: %s\n", llm.Provider(), llm.Model())
+	if err == nil {
+		deps.LLMClient = llm
+		if verbose {
+			fmt.Printf("✓ Initialized LLM client (%s) with model: %s\n", llm.Provider(), llm.Model())
+		}
+	} else if verbose {
+		fmt.Printf("ℹ LLM client unavailable, continuing without LLM steps: %v\n", err)
 	}
 
 	return deps, nil
