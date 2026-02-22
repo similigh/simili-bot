@@ -5,6 +5,7 @@ First off, thank you for considering contributing to Simili! 🎉
 ## Table of Contents
 
 - [Code of Conduct](#code-of-conduct)
+- [Developer Certificate of Origin (DCO)](#developer-certificate-of-origin-dco)
 - [Getting Started](#getting-started)
 - [How Can I Contribute?](#how-can-i-contribute)
 - [Development Setup](#development-setup)
@@ -14,6 +15,53 @@ First off, thank you for considering contributing to Simili! 🎉
 ## Code of Conduct
 
 This project adheres to a [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
+
+## Developer Certificate of Origin (DCO)
+
+This project uses the [Developer Certificate of Origin (DCO)](https://developercertificate.org/) to ensure that all contributions are properly licensed. The DCO is enforced by the [DCO bot](https://github.com/apps/dco) on every pull request.
+
+### Signing Off Your Commits
+
+Every commit in your PR **must** include a `Signed-off-by` line. The easiest way to do this is with the `-s` flag:
+
+```bash
+git commit -s -m "feat: add awesome feature"
+```
+
+This appends a line like:
+
+```
+Signed-off-by: Your Name <your.email@example.com>
+```
+
+Make sure the name and email match your Git configuration:
+
+```bash
+git config user.name "Your Name"
+git config user.email "your.email@example.com"
+```
+
+### Retroactive Sign-Off (Remediation)
+
+If you submitted a PR **before** the DCO check was enabled, you do **not** need to rebase. You have two options:
+
+#### Option 1: Reply to the bot's prompt
+
+When the DCO check fails, a bot will comment on your PR asking if you'd like to sign.
+Simply reply with the following exact phrase:
+
+> I have read the DCO document and I hereby sign the DCO
+
+The bot will then push a signed-off remediation commit to your branch automatically.
+
+#### Option 2: Push a remediation commit manually
+
+```bash
+git commit --allow-empty -s -m "chore: retroactive DCO sign-off"
+git push
+```
+
+A third-party (e.g. a maintainer) can also sign off on your behalf by pushing a remediation commit to your branch.
 
 ## Getting Started
 
@@ -47,7 +95,7 @@ This project adheres to a [Code of Conduct](CODE_OF_CONDUCT.md). By participatin
 1. Look for issues labeled `good first issue` or `help wanted`
 2. Comment on the issue to let others know you're working on it
 3. Create a feature branch from `main`
-4. Make your changes
+4. Make your changes and commit with the `-s` flag (see [DCO](#developer-certificate-of-origin-dco))
 5. Submit a pull request
 
 ## Development Setup

@@ -1,0 +1,204 @@
+# Author: Sachindu Nethmin
+# GitHub: https://github.com/Sachindu-Nethmin
+# Created: 2026-02-21
+# Last Modified: 2026-02-21
+
+# =============================================================================
+# DCO Comment-Based Remediation (Two-Step Flow)
+# =============================================================================
+# Step 1: When the DCO status check fails on a PR, this workflow posts a
+#         comment asking the author if they want to sign the DCO.
+# Step 2: When the author replies with the magic phrase, the workflow pushes
+#         a signed-off remediation commit on their behalf.
+#
+# Trigger phrase:
+#   "I have read the DCO document and I hereby sign the DCO"
+# =============================================================================
+
+name: DCO Remediation
+
+on:
+  # Step 1: Fires when any commit status (including DCO) is updated
+  status:
+  # Step 2: Fires when someone comments on a PR
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  statuses: read
+
+jobs:
+  # ---------------------------------------------------------------
+  # Step 1: DCO check failed → ask the PR author to sign
+  # ---------------------------------------------------------------
+  ask-to-sign:
+    name: Ask Author to Sign DCO
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'status' &&
+      github.event.state == 'failure' &&
+      contains(github.event.context, 'dco')
+    steps:
+      - name: Find associated pull requests
+        id: find-pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA="${{ github.event.commit.sha }}"
+          # Find open PRs whose head SHA matches the failed commit
+          PR_NUMBERS=$(gh api "repos/${{ github.repository }}/pulls?state=open&per_page=100" \
+            --jq "[.[] | select(.head.sha == \"$SHA\")] | .[].number")
+
+          if [ -z "$PR_NUMBERS" ]; then
+            echo "No open PRs found for SHA $SHA"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "pr_numbers=$PR_NUMBERS" >> "$GITHUB_OUTPUT"
+          echo "found=true" >> "$GITHUB_OUTPUT"
+
+      - name: Post sign-off prompt
+        if: steps.find-pr.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          MARKER="<!-- dco-remediation-prompt -->"
+          for PR_NUM in ${{ steps.find-pr.outputs.pr_numbers }}; do
+            # Check if we already posted the prompt (avoid duplicates)
+            EXISTING=$(gh api "repos/${{ github.repository }}/issues/$PR_NUM/comments" \
+              --jq "[.[] | select(.body | contains(\"$MARKER\"))] | length")
+            if [ "$EXISTING" -gt 0 ]; then
+              echo "Prompt already posted on PR #$PR_NUM, skipping."
+              continue
+            fi
+
+            gh pr comment "$PR_NUM" \
+              --repo "${{ github.repository }}" \
+              --body "$MARKER
+          ## ⚠️ DCO Sign-Off Required
+
+          It looks like one or more commits in this PR are missing a \`Signed-off-by\` line.
+
+          If you agree to the [Developer Certificate of Origin](https://developercertificate.org/), please reply with the following **exact phrase**:
+
+          > I have read the DCO document and I hereby sign the DCO
+
+          A remediation commit will be pushed to your branch automatically.
+
+          <sub>Alternatively, you can sign off manually: \`git commit --allow-empty -s -m \"chore: DCO sign-off\" && git push\`</sub>"
+          done
+
+  # ---------------------------------------------------------------
+  # Step 2: Author replied with the phrase → push remediation commit
+  # ---------------------------------------------------------------
+  sign-and-push:
+    name: Push DCO Remediation Commit
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, 'I have read the DCO document and I hereby sign the DCO')
+    steps:
+      - name: Get PR details
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_JSON=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}")
+          HEAD_REF=$(echo "$PR_JSON" | jq -r '.head.ref')
+          HEAD_REPO=$(echo "$PR_JSON" | jq -r '.head.repo.full_name')
+          PR_AUTHOR=$(echo "$PR_JSON" | jq -r '.user.login')
+          USER_ID=$(echo "$PR_JSON" | jq -r '.user.id')
+          echo "head_ref=$HEAD_REF" >> "$GITHUB_OUTPUT"
+          echo "head_repo=$HEAD_REPO" >> "$GITHUB_OUTPUT"
+          echo "pr_author=$PR_AUTHOR" >> "$GITHUB_OUTPUT"
+          echo "user_id=$USER_ID" >> "$GITHUB_OUTPUT"
+
+          # Detect forked PRs — GITHUB_TOKEN cannot push to forks
+          if [ "$HEAD_REPO" != "${{ github.repository }}" ]; then
+            echo "is_fork=true" >> "$GITHUB_OUTPUT"
+            echo "Warning: PR is from a fork ($HEAD_REPO). Cannot auto-push."
+          else
+            echo "is_fork=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify commenter is PR author
+        id: verify
+        run: |
+          COMMENTER="${{ github.event.comment.user.login }}"
+          PR_AUTHOR="${{ steps.pr.outputs.pr_author }}"
+          if [ "$COMMENTER" != "$PR_AUTHOR" ]; then
+            echo "⚠️ Commenter ($COMMENTER) is not the PR author ($PR_AUTHOR). Skipping."
+            echo "authorized=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "✅ Commenter is the PR author."
+            echo "authorized=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout PR branch
+        if: steps.verify.outputs.authorized == 'true' && steps.pr.outputs.is_fork == 'false'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.head_ref }}
+          repository: ${{ steps.pr.outputs.head_repo }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push remediation commit
+        if: steps.verify.outputs.authorized == 'true' && steps.pr.outputs.is_fork == 'false'
+        env:
+          AUTHOR_NAME: ${{ github.event.comment.user.login }}
+          AUTHOR_ID: ${{ steps.pr.outputs.user_id }}
+        run: |
+          git config user.name "$AUTHOR_NAME"
+          git config user.email "${AUTHOR_ID}+${AUTHOR_NAME}@users.noreply.github.com"
+
+          git commit --allow-empty \
+            -s \
+            -m "chore: DCO remediation for $AUTHOR_NAME
+
+          I have read the DCO document and I hereby sign the DCO
+          for all past and future contributions."
+
+          git push
+
+      - name: Acknowledge remediation
+        if: steps.verify.outputs.authorized == 'true' && steps.pr.outputs.is_fork == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" \
+            --body "✅ **DCO Remediation Complete**
+
+          A signed-off remediation commit has been pushed to this PR on behalf of @${{ github.event.comment.user.login }}.
+
+          The DCO check should pass shortly. Thank you for signing off! 🎉"
+
+      - name: Reject non-author
+        if: steps.verify.outputs.authorized != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" \
+            --body "⚠️ Only the PR author can sign the DCO for this pull request. @${{ github.event.comment.user.login }} is not the author of this PR."
+
+      - name: Guide forked PR author
+        if: steps.verify.outputs.authorized == 'true' && steps.pr.outputs.is_fork == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" \
+            --body "👋 Thanks for signing the DCO, @${{ github.event.comment.user.login }}!
+
+          Because this PR is from a **fork**, I cannot push the remediation commit automatically. Please run the following in your local branch:
+
+          \`\`\`bash
+          git commit --allow-empty -s -m \"chore: DCO sign-off\"
+          git push
+          \`\`\`
+
+          The DCO check will pass once the signed-off commit is pushed. 🎉"
