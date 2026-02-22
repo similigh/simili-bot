@@ -58,6 +58,36 @@ func (c *Client) AddLabels(ctx context.Context, org, repo string, number int, la
 	return nil
 }
 
+// CloseIssue closes a GitHub issue by setting its state to "closed".
+func (c *Client) CloseIssue(ctx context.Context, org, repo string, number int) error {
+	closed := "closed"
+	_, _, err := c.client.Issues.Edit(ctx, org, repo, number, &github.IssueRequest{
+		State: &closed,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to close issue #%d: %w", number, err)
+	}
+	return nil
+}
+
+// RemoveLabel removes a single label from an issue.
+// Returns nil if the label was not present (GitHub API returns 404, which we treat as success).
+func (c *Client) RemoveLabel(ctx context.Context, org, repo string, number int, label string) error {
+	if strings.TrimSpace(label) == "" {
+		return fmt.Errorf("label cannot be empty")
+	}
+
+	_, err := c.client.Issues.RemoveLabelForIssue(ctx, org, repo, number, label)
+	if err != nil {
+		// If the label wasn't on the issue, GitHub returns 404 — not an error for us.
+		if ghErr, ok := err.(*github.ErrorResponse); ok && ghErr.Response.StatusCode == 404 {
+			return nil
+		}
+		return fmt.Errorf("failed to remove label %q from issue #%d: %w", label, number, err)
+	}
+	return nil
+}
+
 // TransferIssue transfers an issue to another repository using GitHub GraphQL API.
 // Requires the user to have admin/write access to both repositories.
 // targetRepo should be in "owner/repo" format.

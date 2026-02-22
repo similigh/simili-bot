@@ -105,6 +105,8 @@ func (s *DuplicateDetector) Run(ctx *pipeline.Context) error {
 		ctx.Result.IsDuplicate = true
 		ctx.Result.DuplicateOf = result.DuplicateOf
 		ctx.Result.DuplicateConfidence = result.Confidence
+		// Add "potential-duplicate" label for the auto-close workflow
+		ctx.Result.SuggestedLabels = append(ctx.Result.SuggestedLabels, "potential-duplicate")
 		log.Printf("[duplicate_detector] Duplicate detected: #%d (%.2f confidence)",
 			result.DuplicateOf, result.Confidence)
 	} else {

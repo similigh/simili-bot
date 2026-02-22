@@ -292,6 +292,15 @@ func (s *ResponseBuilder) buildDuplicateSection(ctx *pipeline.Context) string {
 		parts = append(parts, fmt.Sprintf("> _Reason: %s_", duplicateResult.Reasoning))
 	}
 
+	// Auto-close grace period warning
+	gracePeriod := ctx.Config.AutoClose.GracePeriodHours
+	if gracePeriod <= 0 {
+		gracePeriod = 72
+	}
+	parts = append(parts, ">")
+	parts = append(parts, fmt.Sprintf("> ⏳ **This %s will be automatically closed in %d hours** if no objections are raised. "+
+		"If you believe this is **not** a duplicate, please leave a comment explaining why.", subject, gracePeriod))
+
 	parts = append(parts, "")
 	return strings.Join(parts, "\n")
 }
