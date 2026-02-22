@@ -298,18 +298,18 @@ func (ac *AutoCloser) closeIssue(ctx context.Context, org, repo string, number i
 		return fmt.Errorf("failed to post closing comment: %w", err)
 	}
 
-	// Swap labels: remove "potential-duplicate", add "duplicate"
+	// Close the issue first — if this fails, labels stay untouched
+	if err := ac.github.CloseIssue(ctx, org, repo, number); err != nil {
+		return fmt.Errorf("failed to close issue: %w", err)
+	}
+
+	// Swap labels only after successful close: remove "potential-duplicate", add "duplicate"
 	if err := ac.github.RemoveLabel(ctx, org, repo, number, "potential-duplicate"); err != nil {
 		log.Printf("[auto-closer] Warning: failed to remove 'potential-duplicate' label from #%d: %v", number, err)
 	}
 
 	if err := ac.github.AddLabels(ctx, org, repo, number, []string{"duplicate"}); err != nil {
 		log.Printf("[auto-closer] Warning: failed to add 'duplicate' label to #%d: %v", number, err)
-	}
-
-	// Close the issue
-	if err := ac.github.CloseIssue(ctx, org, repo, number); err != nil {
-		return fmt.Errorf("failed to close issue: %w", err)
 	}
 
 	return nil
