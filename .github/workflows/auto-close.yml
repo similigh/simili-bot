@@ -1,0 +1,61 @@
+# =============================================================================
+# Auto-Close Duplicate Issues
+# =============================================================================
+# Runs daily at 10:00 UTC to close issues whose grace period has expired.
+# Also supports manual trigger via workflow_dispatch.
+#
+# Required secrets:
+#   GH_PAT         – Token with issues:write permission
+# =============================================================================
+
+name: Auto-Close Duplicates
+
+on:
+  schedule:
+    # Daily at 10:00 UTC
+    - cron: '0 10 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Run in dry-run mode (no side effects)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  auto-close:
+    name: Auto-Close Expired Duplicates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Build CLI
+        run: go build -o simili-cli ./cmd/simili/main.go
+
+      - name: Run auto-close
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          DRY_RUN_FLAG=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            DRY_RUN_FLAG="--dry-run"
+          fi
+
+          ./simili-cli auto-close \
+            --repo "${{ github.repository }}" \
+            --config .github/simili.yaml \
+            --verbose \
+            $DRY_RUN_FLAG

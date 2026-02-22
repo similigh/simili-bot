@@ -44,10 +44,20 @@ type Config struct {
 	// Transfer configures cross-repository issue routing.
 	Transfer TransferConfig `yaml:"transfer,omitempty"`
 
+	// AutoClose configures the automatic closure of confirmed duplicate issues.
+	AutoClose AutoCloseConfig `yaml:"auto_close,omitempty"`
+
 	// BotUsers is a list of GitHub usernames whose events should be ignored
 	// to prevent infinite comment loops. Built-in heuristics (e.g. "[bot]" suffix,
 	// "gh-simili" prefix) always apply in addition to this list.
 	BotUsers []string `yaml:"bot_users,omitempty"`
+}
+
+// AutoCloseConfig configures the auto-close behavior for duplicate issues.
+type AutoCloseConfig struct {
+	GracePeriodHours           int  `yaml:"grace_period_hours"` // Hours after labeling before auto-close (default: 72)
+	GracePeriodMinutesOverride int  `yaml:"-"`                  // CLI-only override in minutes (for testing; 0 = use GracePeriodHours)
+	DryRun                     bool `yaml:"dry_run,omitempty"`  // If true, log actions without executing
 }
 
 // QdrantConfig holds Qdrant connection settings.
@@ -286,6 +296,10 @@ func (c *Config) applyDefaults() {
 	if c.Transfer.RepoCollection == "" {
 		c.Transfer.RepoCollection = "simili_repos"
 	}
+	// Auto-close defaults
+	if c.AutoClose.GracePeriodHours == 0 {
+		c.AutoClose.GracePeriodHours = 72
+	}
 }
 
 // mergeConfigs merges a child config onto a parent config.
@@ -374,6 +388,14 @@ func mergeConfigs(parent, child *Config) *Config {
 	}
 	if child.Transfer.RepoCollection != "" {
 		result.Transfer.RepoCollection = child.Transfer.RepoCollection
+	}
+
+	// AutoClose: override if fields are set
+	if child.AutoClose.GracePeriodHours != 0 {
+		result.AutoClose.GracePeriodHours = child.AutoClose.GracePeriodHours
+	}
+	if child.AutoClose.DryRun {
+		result.AutoClose.DryRun = child.AutoClose.DryRun
 	}
 
 	return &result

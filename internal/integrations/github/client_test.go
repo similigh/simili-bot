@@ -69,3 +69,17 @@ func TestTransferIssueValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestRemoveLabelValidation(t *testing.T) {
+	client := &Client{client: nil}
+
+	err := client.RemoveLabel(context.Background(), "org", "repo", 1, "")
+	if err == nil {
+		t.Error("Expected error for empty label")
+	}
+
+	err = client.RemoveLabel(context.Background(), "org", "repo", 1, "   ")
+	if err == nil {
+		t.Error("Expected error for whitespace-only label")
+	}
+}
