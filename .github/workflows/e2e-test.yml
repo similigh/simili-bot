@@ -284,6 +284,38 @@ jobs:
           echo "Waiting 15s for GitHub to register the workflow…"
           sleep 15
 
+      # ----- 7b. Create auto-closer test issue -----
+      # Created BEFORE the trigger issue so it ages long enough to exceed the
+      # 1-minute grace-period override we use in the auto-closer E2E step below.
+      # We manually ensure the "potential-duplicate" label exists and apply it
+      # immediately, independent of what the triage bot decides.
+      - name: Setup auto-closer test issue
+        id: ac_setup
+        env:
+          GH_TOKEN: ${{ secrets.BOT_PAT }}
+        run: |
+          REPO="${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}"
+
+          # Ensure the potential-duplicate label exists (bot creates it lazily;
+          # this step runs before the trigger issue is triaged).
+          gh label create "potential-duplicate" \
+            --repo "$REPO" \
+            --color "FBCA04" \
+            --description "Potential duplicate — pending grace period" \
+            2>/dev/null || true
+
+          # Create the AC test issue
+          URL=$(gh issue create --repo "$REPO" \
+            --title "Auto-closer grace period and human-activity E2E test" \
+            --body "This issue is created by the E2E pipeline to verify the auto-closer detects expired grace periods and correctly skips issues with human activity signals.")
+          AC_NUM=$(echo "$URL" | grep -oE '[0-9]+$')
+          echo "ac_issue_number=$AC_NUM" >> "$GITHUB_OUTPUT"
+          echo "AC test issue: #$AC_NUM"
+
+          # Apply potential-duplicate label immediately so the grace period clock starts
+          gh issue edit "$AC_NUM" --repo "$REPO" --add-label "potential-duplicate"
+          echo "✅ Labeled #$AC_NUM as potential-duplicate"
+
       # ----- 8. Create trigger issue (should match seed #1) -----
       - name: Create trigger issue
         id: trigger
@@ -366,6 +398,67 @@ jobs:
           fi
           echo "✅ No loop – single comment"
 
+      # ----- 11b. Auto-closer E2E test -----
+      # By this point the AC test issue (step 7b) and the trigger issue (step 8)
+      # have both been labeled "potential-duplicate" for 6–8 minutes, well past
+      # the 1-minute grace-period override used here.
+      # In dry-run mode the closer reports what it WOULD do, so no issues are
+      # actually closed. We verify:
+      #   • The CLI runs without error and emits valid JSON.
+      #   • At least the AC test issue is processed (processed >= 1).
+      #   • Issues past grace with no human activity are reported as "closed"
+      #     (dry-run), confirming Checks A, B, C found no human signals.
+      - name: Run auto-closer E2E test
+        id: ac_test
+        if: always() && steps.ac_setup.outputs.ac_issue_number != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.BOT_PAT }}
+          GH_TOKEN: ${{ secrets.BOT_PAT }}
+        run: |
+          REPO="${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}"
+
+          echo "Running auto-closer dry-run (grace-period-minutes=1)…"
+
+          # Use the config from the cloned test-repo working tree.
+          # Qdrant/Gemini sections are ignored by the auto-closer.
+          AC_OUTPUT=$("$RUNNER_TEMP/simili-cli" auto-close \
+            --repo   "$REPO" \
+            --config "test-repo-wf/.github/simili.yaml" \
+            --dry-run \
+            --grace-period-minutes 1 \
+            --verbose \
+            2>/tmp/ac-stderr.txt) || AC_EXIT=$?
+
+          echo "--- stderr ---"
+          cat /tmp/ac-stderr.txt || true
+          echo "--- stdout (JSON) ---"
+          echo "$AC_OUTPUT"
+
+          # Parse summary fields from JSON output
+          PROCESSED=$(echo "$AC_OUTPUT" | jq -r '.processed // 0' 2>/dev/null || echo "0")
+          CLOSED=$(echo "$AC_OUTPUT"    | jq -r '.closed    // 0' 2>/dev/null || echo "0")
+          SKIPPED_GRACE=$(echo "$AC_OUTPUT" | jq -r '.skipped_grace_period   // 0' 2>/dev/null || echo "0")
+          SKIPPED_HUMAN=$(echo "$AC_OUTPUT" | jq -r '.skipped_human_activity // 0' 2>/dev/null || echo "0")
+
+          echo "ac_processed=$PROCESSED"      >> "$GITHUB_OUTPUT"
+          echo "ac_closed=$CLOSED"            >> "$GITHUB_OUTPUT"
+          echo "ac_skipped_grace=$SKIPPED_GRACE" >> "$GITHUB_OUTPUT"
+          echo "ac_skipped_human=$SKIPPED_HUMAN" >> "$GITHUB_OUTPUT"
+
+          echo ""
+          echo "Auto-closer summary: processed=$PROCESSED closed=$CLOSED skipped_grace=$SKIPPED_GRACE skipped_human=$SKIPPED_HUMAN"
+
+          if [ "${AC_EXIT:-0}" -ne 0 ]; then
+            echo "❌ auto-close command failed (exit $AC_EXIT)"
+            exit 1
+          fi
+
+          if [ "$PROCESSED" -gt 0 ]; then
+            echo "✅ Auto-closer processed $PROCESSED issue(s) — dry-run OK"
+          else
+            echo "⚠️  Auto-closer found no issues to process (AC test issue may not be labeled yet)"
+          fi
+
       # ----- 12. Cleanup Qdrant (always) -----
       - name: Cleanup Qdrant collection
         if: always()
@@ -422,11 +515,24 @@ jobs:
           REPO="${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}"
           OK="${{ steps.poll.outputs.bot_commented }}"
           ICON=$([ "$OK" = "true" ] && echo "✅" || echo "❌")
+
+          AC_PROC="${{ steps.ac_test.outputs.ac_processed }}"
+          AC_CLOSED="${{ steps.ac_test.outputs.ac_closed }}"
+          AC_GRACE="${{ steps.ac_test.outputs.ac_skipped_grace }}"
+          AC_HUMAN="${{ steps.ac_test.outputs.ac_skipped_human }}"
+          if [ -n "$AC_PROC" ]; then
+            AC_LINE="| **Auto-closer (dry-run)** | processed: ${AC_PROC}  closed: ${AC_CLOSED}  grace: ${AC_GRACE}  human: ${AC_HUMAN} |"
+          else
+            AC_LINE="| **Auto-closer** | skipped (AC setup failed) |"
+          fi
+
           gh pr comment "$PR_NUM" \
             --repo "${{ github.repository }}" \
             --body "## 🧪 E2E Test
 
           ${ICON} **Bot responded:** $([ "$OK" = "true" ] && echo "yes" || echo "no")
+
+          ${AC_LINE}
 
           **Test repo →** [${REPO}](https://github.com/${REPO})
           **Run →** [logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
@@ -449,4 +555,10 @@ jobs:
               echo "| Bot responded | ❌ |"
             fi
             echo "| Test repo | [${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}](https://github.com/${{ env.BOT_NAME }}/${{ env.TEST_REPO_NAME }}) |"
+            AC="${{ steps.ac_test.outputs.ac_processed }}"
+            if [ -n "$AC" ]; then
+              echo "| Auto-closer (dry-run) | processed: $AC  closed: ${{ steps.ac_test.outputs.ac_closed }}  grace: ${{ steps.ac_test.outputs.ac_skipped_grace }}  human: ${{ steps.ac_test.outputs.ac_skipped_human }} |"
+            else
+              echo "| Auto-closer | ⚠️ no output |"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

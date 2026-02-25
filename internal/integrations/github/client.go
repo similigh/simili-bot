@@ -223,7 +223,7 @@ func (c *Client) ListIssueCommentReactions(ctx context.Context, org, repo string
 
 		allReactions = append(allReactions, reactions...)
 
-		if resp.NextPage == 0 {
+		if resp == nil || resp.NextPage == 0 {
 			break
 		}
 		opts.Page = resp.NextPage

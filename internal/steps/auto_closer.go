@@ -227,12 +227,20 @@ func (ac *AutoCloser) findLabeledTime(ctx context.Context, org, repo string, num
 	return latest, nil
 }
 
-// hasHumanActivity checks for any of these signals since the issue was labeled:
-//  1. Negative reactions (👎 or 😕) on the bot's triage comment by a non-bot user
-//  2. The issue was reopened by a human after labeledAt
-//  3. Any non-bot comment posted after labeledAt
+// hasHumanActivity checks for any of the following signals that indicate a human
+// is actively engaging with the issue:
+//
+//  1. Negative reactions (👎 -1 or 😕 confused) on the bot's triage comment by a
+//     non-bot user. The triage comment is searched within a 24-hour window before
+//     `since`. Note: the GitHub Reactions API does not expose per-reaction timestamps,
+//     so individual reactions cannot be filtered by when they were added.
+//  2. The issue was reopened by a human after `since` (labeledAt).
+//  3. Any non-bot comment posted after `since`.
 func (ac *AutoCloser) hasHumanActivity(ctx context.Context, org, repo string, number int, since time.Time) (bool, error) {
-	// Check A: negative reactions on the bot's triage comment
+	// Check A: negative reactions on the bot's triage comment.
+	// Only consider comments within a 24-hour window before `since` to avoid
+	// fetching the entire comment history on high-traffic issues.
+	triageWindow := since.Add(-24 * time.Hour)
 	allComments, err := ac.fetchAllComments(ctx, org, repo, number)
 	if err != nil {
 		return false, err
@@ -240,6 +248,10 @@ func (ac *AutoCloser) hasHumanActivity(ctx context.Context, org, repo string, nu
 
 	for _, comment := range allComments {
 		if comment.User == nil || comment.Body == nil {
+			continue
+		}
+		// Skip comments outside the triage window (too old to be the triage comment)
+		if comment.CreatedAt != nil && comment.CreatedAt.Time.Before(triageWindow) {
 			continue
 		}
 		if !isBotUser(comment.User.GetLogin(), ac.cfg.BotUsers) {
