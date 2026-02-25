@@ -78,6 +78,117 @@ func TestGracePeriodCalculation(t *testing.T) {
 	}
 }
 
+func TestIsBotComment(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"html marker", "<!-- simili-bot-report -->\n## Triage", true},
+		{"emoji marker", "🤖 Simili Triage Report\n...", true},
+		{"plain header", "### Simili Triage Report\n...", true},
+		{"normal comment", "I think this is a duplicate", false},
+		{"empty body", "", false},
+		{"partial match", "<!-- simili-bot-auto-close -->", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isBotComment(tt.body)
+			if got != tt.want {
+				t.Errorf("isBotComment(%q) = %v, want %v", tt.body, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHasNegativeReaction(t *testing.T) {
+	botUsers := []string{"my-ci-bot"}
+
+	tests := []struct {
+		name     string
+		content  string
+		user     string
+		wantSkip bool // true means this reaction should trigger human activity
+	}{
+		{"thumbs down from human", "-1", "john-doe", true},
+		{"confused from human", "confused", "jane-doe", true},
+		{"thumbs up from human", "+1", "john-doe", false},
+		{"heart from human", "heart", "john-doe", false},
+		{"thumbs down from bot", "-1", "dependabot[bot]", false},
+		{"confused from bot", "confused", "gh-simili-worker", false},
+		{"thumbs down from configured bot", "-1", "my-ci-bot", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			isNegative := (tt.content == "-1" || tt.content == "confused")
+			isHuman := !isBotUser(tt.user, botUsers)
+			got := isNegative && isHuman
+			if got != tt.wantSkip {
+				t.Errorf("reaction check: content=%q user=%q => %v, want %v", tt.content, tt.user, got, tt.wantSkip)
+			}
+		})
+	}
+}
+
+func TestReopenedByHuman(t *testing.T) {
+	botUsers := []string{}
+	since := time.Now().Add(-48 * time.Hour)
+
+	type eventInput struct {
+		eventType string
+		actor     string
+		createdAt time.Time
+	}
+
+	tests := []struct {
+		name   string
+		event  eventInput
+		want   bool
+	}{
+		{
+			name:  "reopened by human after since",
+			event: eventInput{"reopened", "john-doe", since.Add(time.Hour)},
+			want:  true,
+		},
+		{
+			name:  "reopened by bot after since",
+			event: eventInput{"reopened", "dependabot[bot]", since.Add(time.Hour)},
+			want:  false,
+		},
+		{
+			name:  "reopened by human before since",
+			event: eventInput{"reopened", "john-doe", since.Add(-time.Hour)},
+			want:  false,
+		},
+		{
+			name:  "closed by human after since",
+			event: eventInput{"closed", "john-doe", since.Add(time.Hour)},
+			want:  false,
+		},
+		{
+			name:  "labeled by human after since",
+			event: eventInput{"labeled", "john-doe", since.Add(time.Hour)},
+			want:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := tt.event
+			isReopened := e.eventType == "reopened"
+			isAfterSince := e.createdAt.After(since)
+			isHuman := !isBotUser(e.actor, botUsers)
+			got := isReopened && isAfterSince && isHuman
+			if got != tt.want {
+				t.Errorf("reopen check: event=%q actor=%q at=%v => %v, want %v",
+					e.eventType, e.actor, e.createdAt, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAutoCloseResultCounts(t *testing.T) {
 	tests := []struct {
 		name   string

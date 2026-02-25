@@ -227,9 +227,75 @@ func (ac *AutoCloser) findLabeledTime(ctx context.Context, org, repo string, num
 	return latest, nil
 }
 
-// hasHumanActivity checks if any non-bot user commented on the issue after the given time.
-// All comment pages are fetched to avoid missing activity on high-traffic issues.
+// hasHumanActivity checks for any of these signals since the issue was labeled:
+//  1. Negative reactions (👎 or 😕) on the bot's triage comment by a non-bot user
+//  2. The issue was reopened by a human after labeledAt
+//  3. Any non-bot comment posted after labeledAt
 func (ac *AutoCloser) hasHumanActivity(ctx context.Context, org, repo string, number int, since time.Time) (bool, error) {
+	// Check A: negative reactions on the bot's triage comment
+	allComments, err := ac.fetchAllComments(ctx, org, repo, number)
+	if err != nil {
+		return false, err
+	}
+
+	for _, comment := range allComments {
+		if comment.User == nil || comment.Body == nil {
+			continue
+		}
+		if !isBotUser(comment.User.GetLogin(), ac.cfg.BotUsers) {
+			continue
+		}
+		if !isBotComment(comment.GetBody()) {
+			continue
+		}
+		// Found the bot's triage comment — check reactions
+		reactions, err := ac.github.ListIssueCommentReactions(ctx, org, repo, comment.GetID())
+		if err != nil {
+			// Non-fatal: log and continue to other checks
+			log.Printf("[auto-closer] #%d: warning: failed to list reactions: %v", number, err)
+			break
+		}
+		for _, r := range reactions {
+			content := r.GetContent()
+			user := ""
+			if r.User != nil {
+				user = r.User.GetLogin()
+			}
+			if (content == "-1" || content == "confused") && !isBotUser(user, ac.cfg.BotUsers) {
+				if ac.verbose {
+					log.Printf("[auto-closer] #%d: negative reaction %q by %q on triage comment", number, content, user)
+				}
+				return true, nil
+			}
+		}
+		break // Only one triage comment expected
+	}
+
+	// Check B: reopened by a human after labeledAt
+	events, err := ac.github.ListIssueEvents(ctx, org, repo, number)
+	if err != nil {
+		return false, err
+	}
+	for _, event := range events {
+		if event.Event == nil || *event.Event != "reopened" {
+			continue
+		}
+		if event.CreatedAt == nil || !event.CreatedAt.Time.After(since) {
+			continue
+		}
+		actor := ""
+		if event.Actor != nil {
+			actor = event.Actor.GetLogin()
+		}
+		if !isBotUser(actor, ac.cfg.BotUsers) {
+			if ac.verbose {
+				log.Printf("[auto-closer] #%d: reopened by human %q at %v", number, actor, event.CreatedAt.Time)
+			}
+			return true, nil
+		}
+	}
+
+	// Check C: human comment after labeledAt
 	opts := &githubapi.IssueListCommentsOptions{
 		Since: &since,
 		ListOptions: githubapi.ListOptions{
@@ -264,6 +330,26 @@ func (ac *AutoCloser) hasHumanActivity(ctx context.Context, org, repo string, nu
 	}
 
 	return false, nil
+}
+
+// fetchAllComments retrieves all comments on an issue without a time filter.
+func (ac *AutoCloser) fetchAllComments(ctx context.Context, org, repo string, number int) ([]*githubapi.IssueComment, error) {
+	var all []*githubapi.IssueComment
+	opts := &githubapi.IssueListCommentsOptions{
+		ListOptions: githubapi.ListOptions{PerPage: 100},
+	}
+	for {
+		comments, resp, err := ac.github.ListComments(ctx, org, repo, number, opts)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, comments...)
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return all, nil
 }
 
 // isBotUser checks if the given username matches a known bot pattern.
