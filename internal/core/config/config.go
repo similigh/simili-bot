@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-18
+// Last Modified: 2026-02-25
 
 // Package config handles loading and merging Simili configuration.
 package config
@@ -390,13 +390,12 @@ func mergeConfigs(parent, child *Config) *Config {
 		result.Transfer.RepoCollection = child.Transfer.RepoCollection
 	}
 
-	// AutoClose: override if fields are set
+	// AutoClose: override if fields are set.
+	// DryRun is always copied so a child config can explicitly set it to false.
 	if child.AutoClose.GracePeriodHours != 0 {
 		result.AutoClose.GracePeriodHours = child.AutoClose.GracePeriodHours
 	}
-	if child.AutoClose.DryRun {
-		result.AutoClose.DryRun = child.AutoClose.DryRun
-	}
+	result.AutoClose.DryRun = child.AutoClose.DryRun
 
 	return &result
 }

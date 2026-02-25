@@ -1,7 +1,7 @@
-// Author: Sachindu Nethmin
-// GitHub: https://github.com/Sachindu-Nethmin
+// Author: Kaviru Hapuarachchi
+// GitHub: https://github.com/kavirubc
 // Created: 2026-02-22
-// Last Modified: 2026-02-22
+// Last Modified: 2026-02-25
 
 package steps
 
@@ -79,16 +79,40 @@ func TestGracePeriodCalculation(t *testing.T) {
 }
 
 func TestAutoCloseResultCounts(t *testing.T) {
-	result := &AutoCloseResult{
-		Processed:    5,
-		Closed:       2,
-		SkippedGrace: 2,
-		SkippedHuman: 1,
+	tests := []struct {
+		name   string
+		result AutoCloseResult
+	}{
+		{
+			name: "no errors",
+			result: AutoCloseResult{
+				Processed:    5,
+				Closed:       2,
+				SkippedGrace: 2,
+				SkippedHuman: 1,
+				Errors:       nil,
+			},
+		},
+		{
+			name: "with errors",
+			result: AutoCloseResult{
+				Processed:    5,
+				Closed:       1,
+				SkippedGrace: 1,
+				SkippedHuman: 1,
+				Errors:       []string{"#10: failed", "#11: failed"},
+			},
+		},
 	}
 
-	total := result.Closed + result.SkippedGrace + result.SkippedHuman
-	if total != result.Processed {
-		t.Errorf("counts don't add up: closed(%d) + grace(%d) + human(%d) = %d, want %d",
-			result.Closed, result.SkippedGrace, result.SkippedHuman, total, result.Processed)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := tt.result
+			total := r.Closed + r.SkippedGrace + r.SkippedHuman + len(r.Errors)
+			if total != r.Processed {
+				t.Errorf("counts don't add up: closed(%d) + grace(%d) + human(%d) + errors(%d) = %d, want %d",
+					r.Closed, r.SkippedGrace, r.SkippedHuman, len(r.Errors), total, r.Processed)
+			}
+		})
 	}
 }

@@ -1,7 +1,7 @@
-// Author: Sachindu Nethmin
-// GitHub: https://github.com/Sachindu-Nethmin
+// Author: Kaviru Hapuarachchi
+// GitHub: https://github.com/kavirubc
 // Created: 2026-02-22
-// Last Modified: 2026-02-22
+// Last Modified: 2026-02-25
 
 // Package steps provides the auto-closer logic for confirmed duplicate issues.
 package steps
@@ -228,6 +228,7 @@ func (ac *AutoCloser) findLabeledTime(ctx context.Context, org, repo string, num
 }
 
 // hasHumanActivity checks if any non-bot user commented on the issue after the given time.
+// All comment pages are fetched to avoid missing activity on high-traffic issues.
 func (ac *AutoCloser) hasHumanActivity(ctx context.Context, org, repo string, number int, since time.Time) (bool, error) {
 	opts := &githubapi.IssueListCommentsOptions{
 		Since: &since,
@@ -236,23 +237,30 @@ func (ac *AutoCloser) hasHumanActivity(ctx context.Context, org, repo string, nu
 		},
 	}
 
-	comments, _, err := ac.github.ListComments(ctx, org, repo, number, opts)
-	if err != nil {
-		return false, err
-	}
+	for {
+		comments, resp, err := ac.github.ListComments(ctx, org, repo, number, opts)
+		if err != nil {
+			return false, err
+		}
 
-	for _, comment := range comments {
-		if comment.User == nil {
-			continue
-		}
-		author := comment.User.GetLogin()
-		if !isBotUser(author, ac.cfg.BotUsers) {
-			if ac.verbose {
-				log.Printf("[auto-closer] #%d: human comment by %q at %v",
-					number, author, comment.CreatedAt.Time)
+		for _, comment := range comments {
+			if comment.User == nil {
+				continue
 			}
-			return true, nil
+			author := comment.User.GetLogin()
+			if !isBotUser(author, ac.cfg.BotUsers) {
+				if ac.verbose {
+					log.Printf("[auto-closer] #%d: human comment by %q at %v",
+						number, author, comment.CreatedAt.Time)
+				}
+				return true, nil
+			}
 		}
+
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
 	}
 
 	return false, nil
@@ -273,7 +281,9 @@ func isBotUser(author string, configBotUsers []string) bool {
 	return false
 }
 
-// closeIssue performs the close: swap labels, post comment, close issue.
+// closeIssue closes the issue, swaps labels, then posts a closing comment.
+// Order: close → swap labels → comment. This ensures no "closed" comment is
+// left on an issue that failed to actually close.
 func (ac *AutoCloser) closeIssue(ctx context.Context, org, repo string, number int) error {
 	// Determine effective grace period for display
 	gracePeriodDisplay := ac.cfg.AutoClose.GracePeriodHours
@@ -281,7 +291,21 @@ func (ac *AutoCloser) closeIssue(ctx context.Context, org, repo string, number i
 		gracePeriodDisplay = 72
 	}
 
-	// Post closing comment
+	// 1. Close the issue first — if this fails, nothing else runs.
+	if err := ac.github.CloseIssue(ctx, org, repo, number); err != nil {
+		return fmt.Errorf("failed to close issue: %w", err)
+	}
+
+	// 2. Swap labels after successful close.
+	if err := ac.github.RemoveLabel(ctx, org, repo, number, "potential-duplicate"); err != nil {
+		log.Printf("[auto-closer] Warning: failed to remove 'potential-duplicate' label from #%d: %v", number, err)
+	}
+
+	if err := ac.github.AddLabels(ctx, org, repo, number, []string{"duplicate"}); err != nil {
+		log.Printf("[auto-closer] Warning: failed to add 'duplicate' label to #%d: %v", number, err)
+	}
+
+	// 3. Post closing comment only after the issue is confirmed closed.
 	comment := fmt.Sprintf(
 		"<!-- simili-bot-auto-close -->\n"+
 			"### Auto-Closed as Duplicate\n\n"+
@@ -295,21 +319,8 @@ func (ac *AutoCloser) closeIssue(ctx context.Context, org, repo string, number i
 	)
 
 	if err := ac.github.CreateComment(ctx, org, repo, number, comment); err != nil {
-		return fmt.Errorf("failed to post closing comment: %w", err)
-	}
-
-	// Close the issue first — if this fails, labels stay untouched
-	if err := ac.github.CloseIssue(ctx, org, repo, number); err != nil {
-		return fmt.Errorf("failed to close issue: %w", err)
-	}
-
-	// Swap labels only after successful close: remove "potential-duplicate", add "duplicate"
-	if err := ac.github.RemoveLabel(ctx, org, repo, number, "potential-duplicate"); err != nil {
-		log.Printf("[auto-closer] Warning: failed to remove 'potential-duplicate' label from #%d: %v", number, err)
-	}
-
-	if err := ac.github.AddLabels(ctx, org, repo, number, []string{"duplicate"}); err != nil {
-		log.Printf("[auto-closer] Warning: failed to add 'duplicate' label to #%d: %v", number, err)
+		// Issue is already closed — log the failure but don't surface it as an error.
+		log.Printf("[auto-closer] Warning: failed to post closing comment on #%d: %v", number, err)
 	}
 
 	return nil
