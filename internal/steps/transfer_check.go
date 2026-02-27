@@ -1,24 +1,37 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/Kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-04
+// Last Modified: 2026-02-27
 
 // Package steps provides the transfer check step.
 package steps
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/similigh/simili-bot/internal/core/pipeline"
+	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/qdrant"
 	"github.com/similigh/simili-bot/internal/transfer"
 )
 
 // TransferCheck evaluates if an issue should be transferred to another repository.
-type TransferCheck struct{}
+// It first applies rule-based matching; if no rule matches and VDB routing is enabled
+// it falls back to semantic VDB search (hybrid strategy).
+type TransferCheck struct {
+	embedder    *gemini.Embedder
+	vectorStore qdrant.VectorStore
+	llmClient   *gemini.LLMClient
+}
 
 // NewTransferCheck creates a new transfer check step.
 func NewTransferCheck(deps *pipeline.Dependencies) *TransferCheck {
-	return &TransferCheck{}
+	return &TransferCheck{
+		embedder:    deps.Embedder,
+		vectorStore: deps.VectorStore,
+		llmClient:   deps.LLMClient,
+	}
 }
 
 // Name returns the step name.
@@ -26,16 +39,16 @@ func (s *TransferCheck) Name() string {
 	return "transfer_check"
 }
 
-// Run checks if the issue should be transferred using transfer rules.
+// Run checks if the issue should be transferred using transfer rules and optionally VDB routing.
 func (s *TransferCheck) Run(ctx *pipeline.Context) error {
 	if ctx.Issue.EventType == "pull_request" || ctx.Issue.EventType == "pr_comment" {
 		log.Printf("[transfer_check] Pull request event detected, skipping transfer rules")
 		return nil
 	}
 
-	// Skip if transfer is not enabled or no rules configured
-	if ctx.Config.Transfer.Enabled == nil || !*ctx.Config.Transfer.Enabled || len(ctx.Config.Transfer.Rules) == 0 {
-		log.Printf("[transfer_check] Transfer not enabled or no rules, skipping")
+	// Skip if transfer is not enabled
+	if ctx.Config.Transfer.Enabled == nil || !*ctx.Config.Transfer.Enabled {
+		log.Printf("[transfer_check] Transfer not enabled, skipping")
 		return nil
 	}
 
@@ -47,49 +60,148 @@ func (s *TransferCheck) Run(ctx *pipeline.Context) error {
 
 	blockedTargets, _ := ctx.Metadata["blocked_targets"].([]string)
 
-	log.Printf("[transfer_check] Checking transfer rules for issue #%d", ctx.Issue.Number)
+	strategy := ctx.Config.Transfer.Strategy
+	vdbCfg := ctx.Config.Transfer.VDBRouting
+	vdbEnabled := vdbCfg.Enabled != nil && *vdbCfg.Enabled
 
-	// Create the rule matcher
-	matcher := transfer.NewRuleMatcher(ctx.Config.Transfer.Rules)
-
-	// Build issue input for matching
-	input := &transfer.IssueInput{
-		Title:  ctx.Issue.Title,
-		Body:   ctx.Issue.Body,
-		Labels: ctx.Issue.Labels,
-		Author: ctx.Issue.Author,
+	// Determine effective strategy
+	if strategy == "" {
+		if vdbEnabled {
+			strategy = "hybrid"
+		} else {
+			strategy = "rules-only"
+		}
 	}
 
-	// Evaluate rules
-	result := matcher.Match(input)
-	if result.Matched {
-		// Check if target is blocked (loop prevention)
-		isBlocked := false
-		for _, blocked := range blockedTargets {
-			if blocked == result.Target {
-				isBlocked = true
-				break
+	log.Printf("[transfer_check] Strategy=%s vdbEnabled=%v issue=#%d", strategy, vdbEnabled, ctx.Issue.Number)
+
+	// --- Rule-based matching ---
+	ruleMatched := false
+	if strategy != "vdb-only" && len(ctx.Config.Transfer.Rules) > 0 {
+		matcher := transfer.NewRuleMatcher(ctx.Config.Transfer.Rules)
+		input := &transfer.IssueInput{
+			Title:  ctx.Issue.Title,
+			Body:   ctx.Issue.Body,
+			Labels: ctx.Issue.Labels,
+			Author: ctx.Issue.Author,
+		}
+		result := matcher.Match(input)
+		if result.Matched {
+			if isBlockedTarget(result.Target, blockedTargets) {
+				log.Printf("[transfer_check] Skipping transfer to %s: loop prevention (blocked target)", result.Target)
+			} else {
+				log.Printf("[transfer_check] Rule match: rule=%s target=%s", result.Rule.Name, result.Target)
+				setTransferTarget(ctx, result.Target, "rule", 1.0, result.Rule.Name, "")
+				ruleMatched = true
 			}
 		}
-
-		if isBlocked {
-			log.Printf("[transfer_check] Skipping transfer to %s: detected loop (blocked target)", result.Target)
-			return nil
-		}
-
-		log.Printf("[transfer_check] Issue #%d matched rule '%s', target: %s",
-			ctx.Issue.Number, result.Rule.Name, result.Target)
-
-		// Set transfer target
-		ctx.TransferTarget = result.Target
-		ctx.Result.TransferTarget = result.Target
-
-		// Store metadata for downstream steps
-		ctx.Metadata["transfer_rule"] = result.Rule.Name
-		ctx.Metadata["skip_duplicate_detection"] = true
-	} else {
-		log.Printf("[transfer_check] Issue #%d did not match any transfer rules", ctx.Issue.Number)
 	}
 
+	if ruleMatched {
+		return nil
+	}
+
+	// --- VDB fallback ---
+	if strategy == "rules-only" || !vdbEnabled {
+		log.Printf("[transfer_check] VDB routing disabled or rules-only strategy, skipping VDB")
+		return nil
+	}
+
+	if s.embedder == nil || s.vectorStore == nil {
+		log.Printf("[transfer_check] VDB deps not available, skipping VDB routing")
+		return nil
+	}
+
+	currentRepo := fmt.Sprintf("%s/%s", ctx.Issue.Org, ctx.Issue.Repo)
+	collection := ctx.Config.Qdrant.Collection
+
+	router := transfer.NewVDBRouter(s.embedder, s.vectorStore, collection, 50)
+
+	vdbResult, err := router.SuggestTransfer(
+		ctx.Ctx,
+		&transfer.IssueInput{Title: ctx.Issue.Title, Body: ctx.Issue.Body},
+		currentRepo,
+		vdbCfg.ConfidenceThreshold,
+		vdbCfg.MinSamplesPerRepo,
+		vdbCfg.MaxCandidates,
+	)
+	if err != nil {
+		log.Printf("[transfer_check] VDB routing error: %v", err)
+		return nil // Non-fatal
+	}
+
+	if vdbResult == nil {
+		log.Printf("[transfer_check] VDB found no confident transfer candidate")
+		return nil
+	}
+
+	if isBlockedTarget(vdbResult.Target, blockedTargets) {
+		log.Printf("[transfer_check] VDB target %s is blocked (loop prevention)", vdbResult.Target)
+		return nil
+	}
+
+	// Optionally generate LLM explanation
+	reasoning := ""
+	if vdbCfg.ExplainDecision && s.llmClient != nil {
+		similar := buildSimilarForExplain(vdbResult.SimilarIssues)
+		explanation, err := s.llmClient.ExplainTransfer(ctx.Ctx, &gemini.ExplainTransferInput{
+			IssueTitle:    ctx.Issue.Title,
+			IssueBody:     ctx.Issue.Body,
+			TargetRepo:    vdbResult.Target,
+			SimilarIssues: similar,
+		})
+		if err != nil {
+			log.Printf("[transfer_check] ExplainTransfer error (non-fatal): %v", err)
+		} else {
+			reasoning = explanation
+		}
+	}
+
+	log.Printf("[transfer_check] VDB transfer suggestion: target=%s confidence=%.2f",
+		vdbResult.Target, vdbResult.Confidence)
+
+	setTransferTarget(ctx, vdbResult.Target, "vdb", vdbResult.Confidence, "", reasoning)
 	return nil
+}
+
+// setTransferTarget writes the transfer decision into the pipeline context.
+func setTransferTarget(ctx *pipeline.Context, target, method string, confidence float64, ruleName, reasoning string) {
+	ctx.TransferTarget = target
+	ctx.Result.TransferTarget = target
+	ctx.Result.TransferConfidence = confidence
+	if reasoning != "" {
+		ctx.Result.TransferReason = reasoning
+	}
+
+	ctx.Metadata["transfer_method"] = method
+	ctx.Metadata["transfer_confidence"] = confidence
+	if reasoning != "" {
+		ctx.Metadata["transfer_reasoning"] = reasoning
+	}
+	if ruleName != "" {
+		ctx.Metadata["transfer_rule"] = ruleName
+	}
+	ctx.Metadata["skip_duplicate_detection"] = true
+}
+
+// isBlockedTarget checks if a target repo is in the blocked list.
+func isBlockedTarget(target string, blocked []string) bool {
+	for _, b := range blocked {
+		if b == target {
+			return true
+		}
+	}
+	return false
+}
+
+// buildSimilarForExplain converts VDB result IDs to SimilarIssueInput stubs.
+func buildSimilarForExplain(ids []string) []gemini.SimilarIssueInput {
+	out := make([]gemini.SimilarIssueInput, 0, len(ids))
+	for i, id := range ids {
+		out = append(out, gemini.SimilarIssueInput{
+			Number: i + 1,
+			Title:  id, // Best we have without full payloads
+		})
+	}
+	return out
 }
