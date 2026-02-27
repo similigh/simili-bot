@@ -255,6 +255,33 @@ Assessment must be one of: "excellent", "good", "needs-improvement", "poor"`,
 	)
 }
 
+// buildExplainTransferPrompt creates a prompt to explain a VDB-driven transfer decision.
+func buildExplainTransferPrompt(input *ExplainTransferInput) string {
+	var similarList strings.Builder
+	for i, s := range input.SimilarIssues {
+		fmt.Fprintf(&similarList, "%d. #%d: %s\n", i+1, s.Number, s.Title)
+	}
+
+	return fmt.Sprintf(`You are an AI assistant helping explain a GitHub issue routing decision.
+
+The following issue is being considered for transfer to the repository "%s":
+- Title: %s
+- Body: %s
+
+Similar issues already in "%s":
+%s
+
+In 2-3 sentences, explain why this issue belongs in "%s" based on the similar issues found there.
+Be concise and specific.`,
+		input.TargetRepo,
+		input.IssueTitle,
+		truncate(input.IssueBody, 500),
+		input.TargetRepo,
+		similarList.String(),
+		input.TargetRepo,
+	)
+}
+
 // buildDuplicateDetectionPrompt creates a prompt for duplicate detection analysis.
 func buildDuplicateDetectionPrompt(input *DuplicateCheckInput) string {
 	var similarList strings.Builder

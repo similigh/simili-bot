@@ -278,6 +278,24 @@ func (l *LLMClient) AssessQuality(ctx context.Context, issue *IssueInput) (*Qual
 	return &result, nil
 }
 
+// ExplainTransferInput holds the data needed to generate a transfer explanation.
+type ExplainTransferInput struct {
+	IssueTitle    string
+	IssueBody     string
+	TargetRepo    string
+	SimilarIssues []SimilarIssueInput // From target repo
+}
+
+// ExplainTransfer generates a brief explanation of why an issue should be transferred.
+func (l *LLMClient) ExplainTransfer(ctx context.Context, input *ExplainTransferInput) (string, error) {
+	prompt := buildExplainTransferPrompt(input)
+	text, err := l.generateText(ctx, prompt, 0.3, false)
+	if err != nil {
+		return "", fmt.Errorf("failed to explain transfer: %w", err)
+	}
+	return strings.TrimSpace(text), nil
+}
+
 // DetectDuplicate analyzes semantic similarity for duplicate detection.
 // It retries on transient errors (429/5xx) with exponential backoff.
 func (l *LLMClient) DetectDuplicate(ctx context.Context, input *DuplicateCheckInput) (*DuplicateResult, error) {
