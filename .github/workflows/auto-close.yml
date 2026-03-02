@@ -24,6 +24,11 @@ on:
         options:
           - 'false'
           - 'true'
+      grace_period_minutes:
+        description: 'Grace period in minutes before a potential-duplicate issue is labelled duplicate and closed (overrides config). Leave empty to use the configured default.'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -54,8 +59,14 @@ jobs:
             DRY_RUN_FLAG="--dry-run"
           fi
 
+          GRACE_FLAG=""
+          if [ -n "${{ inputs.grace_period_minutes }}" ]; then
+            GRACE_FLAG="--grace-period-minutes ${{ inputs.grace_period_minutes }}"
+          fi
+
           ./simili-cli auto-close \
             --repo "${{ github.repository }}" \
             --config .github/simili.yaml \
             --verbose \
-            $DRY_RUN_FLAG
+            $DRY_RUN_FLAG \
+            $GRACE_FLAG
