@@ -53,15 +53,20 @@ jobs:
       - name: Run auto-close
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          GRACE_PERIOD_INPUT: ${{ inputs.grace_period_minutes }}
         run: |
           DRY_RUN_FLAG=""
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             DRY_RUN_FLAG="--dry-run"
           fi
 
-          GRACE_FLAG=""
-          if [ -n "${{ inputs.grace_period_minutes }}" ]; then
-            GRACE_FLAG="--grace-period-minutes ${{ inputs.grace_period_minutes }}"
+          GRACE_ARGS=()
+          if [[ -n "$GRACE_PERIOD_INPUT" ]]; then
+            if [[ "$GRACE_PERIOD_INPUT" =~ ^[0-9]+$ ]]; then
+              GRACE_ARGS=("--grace-period-minutes" "$GRACE_PERIOD_INPUT")
+            else
+              echo "::warning::grace_period_minutes must be a positive integer; ignoring value '$GRACE_PERIOD_INPUT'"
+            fi
           fi
 
           ./simili-cli auto-close \
@@ -69,4 +74,4 @@ jobs:
             --config .github/simili.yaml \
             --verbose \
             $DRY_RUN_FLAG \
-            $GRACE_FLAG
+            "${GRACE_ARGS[@]}"
