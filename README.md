@@ -220,6 +220,50 @@ Notes:
 - `llm.api_key` can be omitted if `GEMINI_API_KEY` is set.
 - You can override the model at runtime with `LLM_MODEL`.
 
+### `simili auto-close`
+
+Scan all open issues labelled `potential-duplicate` and close those whose grace period has expired with no human activity. Closed issues are relabelled from `potential-duplicate` → `duplicate`.
+
+```bash
+simili auto-close --repo owner/repo --grace-period-minutes 60
+```
+
+**Flags:**
+- `--repo` (required): Target repository (`owner/name`); falls back to `GITHUB_REPOSITORY` env var
+- `--grace-period-minutes`: Override the grace period in minutes for this run (see precedence below)
+- `--dry-run`: Print what would be closed without making any changes
+- `--config`: Path to `simili.yaml` (auto-discovered if omitted)
+
+**Grace period precedence** (highest → lowest):
+
+| Source | How to set |
+|--------|-----------|
+| `--grace-period-minutes` CLI flag | Pass at runtime — overrides everything |
+| `auto_close.grace_period_hours` in `simili.yaml` | Persistent per-repo config |
+| Built-in default | 72 hours (3 days) |
+
+**`simili.yaml` configuration:**
+
+```yaml
+auto_close:
+  grace_period_hours: 48   # default: 72
+  dry_run: false
+```
+
+**Human activity signals** — any of these prevent auto-close:
+1. A negative reaction (👎 or 😕) on the bot's triage comment by a non-bot user.
+2. The issue was reopened by a human after the `potential-duplicate` label was applied.
+3. A non-bot comment posted after the label was applied.
+
+**GitHub Actions usage** — the `auto-close.yml` workflow runs daily at 10:00 UTC and can be triggered manually via `workflow_dispatch` with an optional `grace_period_minutes` input:
+
+```yaml
+# Trigger from GitHub UI or gh CLI:
+gh workflow run auto-close.yml -f grace_period_minutes=60 -f dry_run=false
+```
+
+Leaving `grace_period_minutes` empty uses the value from `simili.yaml` (or the 72 h default).
+
 ## Development
 
 ```bash
