@@ -137,7 +137,7 @@ func (r *VDBRouter) SuggestTransfer(ctx context.Context, issue *IssueInput, curr
 	}, nil
 }
 
-// VDBRouterWithGeminiEmbedder is a convenience constructor accepting *ai.Embedder directly.
-func NewVDBRouterFromGemini(embedder *ai.Embedder, store qdrant.VectorStore, collection string, maxResults int) *VDBRouter {
+// NewVDBRouterFromEmbedder is a convenience constructor accepting *ai.Embedder directly.
+func NewVDBRouterFromEmbedder(embedder *ai.Embedder, store qdrant.VectorStore, collection string, maxResults int) *VDBRouter {
 	return NewVDBRouter(embedder, store, collection, maxResults)
 }

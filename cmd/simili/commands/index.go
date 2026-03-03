@@ -89,13 +89,13 @@ func runIndex(cmd *cobra.Command, args []string) {
 
 	ghClient := similiGithub.NewClient(ctx, token)
 
-	geminiClient, err := ai.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
+	embedder, err := ai.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
 	if err != nil {
 		log.Fatalf("Failed to init embedder: %v", err)
 	}
-	defer geminiClient.Close()
+	defer embedder.Close()
 	embeddingDimensions := cfg.Embedding.Dimensions
-	if dim := geminiClient.Dimensions(); dim > 0 {
+	if dim := embedder.Dimensions(); dim > 0 {
 		embeddingDimensions = dim
 	}
 
@@ -144,7 +144,7 @@ func runIndex(cmd *cobra.Command, args []string) {
 		go func(id int) {
 			defer wg.Done()
 			for job := range jobs {
-				processIssue(ctx, id, job.Issue, ghClient, geminiClient, qdrantClient, splitter, cfg.Qdrant.Collection, org, repoName, indexDryRun)
+				processIssue(ctx, id, job.Issue, ghClient, embedder, qdrantClient, splitter, cfg.Qdrant.Collection, org, repoName, indexDryRun)
 			}
 		}(i)
 	}
