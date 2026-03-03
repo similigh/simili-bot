@@ -17,7 +17,7 @@ import (
 
 	"github.com/similigh/simili-bot/internal/core/config"
 	"github.com/similigh/simili-bot/internal/core/pipeline"
-	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/ai"
 	"github.com/similigh/simili-bot/internal/integrations/github"
 	"github.com/similigh/simili-bot/internal/integrations/qdrant"
 	"github.com/similigh/simili-bot/internal/steps"
@@ -115,7 +115,7 @@ func initDependencies(cfg *config.Config) (*pipeline.Dependencies, error) {
 	}
 
 	// Embedder (Gemini/OpenAI auto-selected by available keys)
-	embedder, err := gemini.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
+	embedder, err := ai.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init embedder: %w", err)
 	}
@@ -151,7 +151,7 @@ func initDependencies(cfg *config.Config) (*pipeline.Dependencies, error) {
 	if envModel := os.Getenv("LLM_MODEL"); envModel != "" {
 		llmModel = envModel
 	}
-	llm, err := gemini.NewLLMClient(llmKey, llmModel)
+	llm, err := ai.NewLLMClient(llmKey, llmModel)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init LLM: %w", err)
 	}

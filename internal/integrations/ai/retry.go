@@ -3,8 +3,8 @@
 // Created: 2026-02-15
 // Last Modified: 2026-02-17
 
-// Package gemini provides Gemini AI integration for embeddings and LLM.
-package gemini
+// Package ai provides provider-neutral AI integration for embeddings and LLM.
+package ai
 
 import (
 	"context"

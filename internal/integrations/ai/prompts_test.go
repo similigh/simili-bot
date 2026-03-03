@@ -3,7 +3,7 @@
 // Created: 2026-02-02
 // Last Modified: 2026-02-02
 
-package gemini
+package ai
 
 import (
 	"strings"

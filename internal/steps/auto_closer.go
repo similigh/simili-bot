@@ -1,7 +1,7 @@
-// Author: Sachindu Nethmin
-// GitHub: https://github.com/Sachindu-Nethmin
+// Author: Kaviru Hapuarachchi
+// GitHub: https://github.com/kavirubc
 // Created: 2026-02-22
-// Last Modified: 2026-02-22
+// Last Modified: 2026-02-25
 
 // Package steps provides the auto-closer logic for confirmed duplicate issues.
 package steps
@@ -227,8 +227,87 @@ func (ac *AutoCloser) findLabeledTime(ctx context.Context, org, repo string, num
 	return latest, nil
 }
 
-// hasHumanActivity checks if any non-bot user commented on the issue after the given time.
+// hasHumanActivity checks for any of the following signals that indicate a human
+// is actively engaging with the issue:
+//
+//  1. Negative reactions (👎 -1 or 😕 confused) on the bot's triage comment by a
+//     non-bot user. The triage comment is searched within a 24-hour window before
+//     `since`. Note: the GitHub Reactions API does not expose per-reaction timestamps,
+//     so individual reactions cannot be filtered by when they were added.
+//  2. The issue was reopened by a human after `since` (labeledAt).
+//  3. Any non-bot comment posted after `since`.
 func (ac *AutoCloser) hasHumanActivity(ctx context.Context, org, repo string, number int, since time.Time) (bool, error) {
+	// Check A: negative reactions on the bot's triage comment.
+	// Only consider comments within a 24-hour window before `since` to avoid
+	// fetching the entire comment history on high-traffic issues.
+	triageWindow := since.Add(-24 * time.Hour)
+	allComments, err := ac.fetchAllComments(ctx, org, repo, number)
+	if err != nil {
+		return false, err
+	}
+
+	for _, comment := range allComments {
+		if comment.User == nil || comment.Body == nil {
+			continue
+		}
+		// Skip comments outside the triage window (too old to be the triage comment)
+		if comment.CreatedAt != nil && comment.CreatedAt.Time.Before(triageWindow) {
+			continue
+		}
+		if !isBotUser(comment.User.GetLogin(), ac.cfg.BotUsers) {
+			continue
+		}
+		if !isBotComment(comment.GetBody()) {
+			continue
+		}
+		// Found the bot's triage comment — check reactions
+		reactions, err := ac.github.ListIssueCommentReactions(ctx, org, repo, comment.GetID())
+		if err != nil {
+			// Non-fatal: log and continue to other checks
+			log.Printf("[auto-closer] #%d: warning: failed to list reactions: %v", number, err)
+			break
+		}
+		for _, r := range reactions {
+			content := r.GetContent()
+			user := ""
+			if r.User != nil {
+				user = r.User.GetLogin()
+			}
+			if (content == "-1" || content == "confused") && !isBotUser(user, ac.cfg.BotUsers) {
+				if ac.verbose {
+					log.Printf("[auto-closer] #%d: negative reaction %q by %q on triage comment", number, content, user)
+				}
+				return true, nil
+			}
+		}
+		break // Only one triage comment expected
+	}
+
+	// Check B: reopened by a human after labeledAt
+	events, err := ac.github.ListIssueEvents(ctx, org, repo, number)
+	if err != nil {
+		return false, err
+	}
+	for _, event := range events {
+		if event.Event == nil || *event.Event != "reopened" {
+			continue
+		}
+		if event.CreatedAt == nil || !event.CreatedAt.Time.After(since) {
+			continue
+		}
+		actor := ""
+		if event.Actor != nil {
+			actor = event.Actor.GetLogin()
+		}
+		if !isBotUser(actor, ac.cfg.BotUsers) {
+			if ac.verbose {
+				log.Printf("[auto-closer] #%d: reopened by human %q at %v", number, actor, event.CreatedAt.Time)
+			}
+			return true, nil
+		}
+	}
+
+	// Check C: human comment after labeledAt
 	opts := &githubapi.IssueListCommentsOptions{
 		Since: &since,
 		ListOptions: githubapi.ListOptions{
@@ -236,26 +315,53 @@ func (ac *AutoCloser) hasHumanActivity(ctx context.Context, org, repo string, nu
 		},
 	}
 
-	comments, _, err := ac.github.ListComments(ctx, org, repo, number, opts)
-	if err != nil {
-		return false, err
-	}
+	for {
+		comments, resp, err := ac.github.ListComments(ctx, org, repo, number, opts)
+		if err != nil {
+			return false, err
+		}
 
-	for _, comment := range comments {
-		if comment.User == nil {
-			continue
-		}
-		author := comment.User.GetLogin()
-		if !isBotUser(author, ac.cfg.BotUsers) {
-			if ac.verbose {
-				log.Printf("[auto-closer] #%d: human comment by %q at %v",
-					number, author, comment.CreatedAt.Time)
+		for _, comment := range comments {
+			if comment.User == nil {
+				continue
 			}
-			return true, nil
+			author := comment.User.GetLogin()
+			if !isBotUser(author, ac.cfg.BotUsers) {
+				if ac.verbose {
+					log.Printf("[auto-closer] #%d: human comment by %q at %v",
+						number, author, comment.CreatedAt.Time)
+				}
+				return true, nil
+			}
 		}
+
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
 	}
 
 	return false, nil
+}
+
+// fetchAllComments retrieves all comments on an issue without a time filter.
+func (ac *AutoCloser) fetchAllComments(ctx context.Context, org, repo string, number int) ([]*githubapi.IssueComment, error) {
+	var all []*githubapi.IssueComment
+	opts := &githubapi.IssueListCommentsOptions{
+		ListOptions: githubapi.ListOptions{PerPage: 100},
+	}
+	for {
+		comments, resp, err := ac.github.ListComments(ctx, org, repo, number, opts)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, comments...)
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return all, nil
 }
 
 // isBotUser checks if the given username matches a known bot pattern.
@@ -273,7 +379,9 @@ func isBotUser(author string, configBotUsers []string) bool {
 	return false
 }
 
-// closeIssue performs the close: swap labels, post comment, close issue.
+// closeIssue closes the issue, swaps labels, then posts a closing comment.
+// Order: close → swap labels → comment. This ensures no "closed" comment is
+// left on an issue that failed to actually close.
 func (ac *AutoCloser) closeIssue(ctx context.Context, org, repo string, number int) error {
 	// Determine effective grace period for display
 	gracePeriodDisplay := ac.cfg.AutoClose.GracePeriodHours
@@ -281,7 +389,21 @@ func (ac *AutoCloser) closeIssue(ctx context.Context, org, repo string, number i
 		gracePeriodDisplay = 72
 	}
 
-	// Post closing comment
+	// 1. Close the issue first — if this fails, nothing else runs.
+	if err := ac.github.CloseIssue(ctx, org, repo, number); err != nil {
+		return fmt.Errorf("failed to close issue: %w", err)
+	}
+
+	// 2. Swap labels after successful close.
+	if err := ac.github.RemoveLabel(ctx, org, repo, number, "potential-duplicate"); err != nil {
+		log.Printf("[auto-closer] Warning: failed to remove 'potential-duplicate' label from #%d: %v", number, err)
+	}
+
+	if err := ac.github.AddLabels(ctx, org, repo, number, []string{"duplicate"}); err != nil {
+		log.Printf("[auto-closer] Warning: failed to add 'duplicate' label to #%d: %v", number, err)
+	}
+
+	// 3. Post closing comment only after the issue is confirmed closed.
 	comment := fmt.Sprintf(
 		"<!-- simili-bot-auto-close -->\n"+
 			"### Auto-Closed as Duplicate\n\n"+
@@ -295,21 +417,8 @@ func (ac *AutoCloser) closeIssue(ctx context.Context, org, repo string, number i
 	)
 
 	if err := ac.github.CreateComment(ctx, org, repo, number, comment); err != nil {
-		return fmt.Errorf("failed to post closing comment: %w", err)
-	}
-
-	// Close the issue first — if this fails, labels stay untouched
-	if err := ac.github.CloseIssue(ctx, org, repo, number); err != nil {
-		return fmt.Errorf("failed to close issue: %w", err)
-	}
-
-	// Swap labels only after successful close: remove "potential-duplicate", add "duplicate"
-	if err := ac.github.RemoveLabel(ctx, org, repo, number, "potential-duplicate"); err != nil {
-		log.Printf("[auto-closer] Warning: failed to remove 'potential-duplicate' label from #%d: %v", number, err)
-	}
-
-	if err := ac.github.AddLabels(ctx, org, repo, number, []string{"duplicate"}); err != nil {
-		log.Printf("[auto-closer] Warning: failed to add 'duplicate' label to #%d: %v", number, err)
+		// Issue is already closed — log the failure but don't surface it as an error.
+		log.Printf("[auto-closer] Warning: failed to post closing comment on #%d: %v", number, err)
 	}
 
 	return nil

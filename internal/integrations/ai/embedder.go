@@ -3,12 +3,8 @@
 // Created: 2026-02-02
 // Last Modified: 2026-02-17
 
-// Package gemini provides AI integration for embeddings and LLM.
-//
-// TODO(2026-02-16): This package is named "gemini" for historical reasons, but it
-// now supports multiple providers (Gemini and OpenAI). Recommend renaming
-// directory/package to provider-neutral naming (for example `internal/integrations/ai`).
-package gemini
+// Package ai provides AI integration for embeddings and LLM.
+package ai
 
 import (
 	"context"

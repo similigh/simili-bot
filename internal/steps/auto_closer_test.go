@@ -1,7 +1,7 @@
-// Author: Sachindu Nethmin
-// GitHub: https://github.com/Sachindu-Nethmin
+// Author: Kaviru Hapuarachchi
+// GitHub: https://github.com/kavirubc
 // Created: 2026-02-22
-// Last Modified: 2026-02-22
+// Last Modified: 2026-02-25
 
 package steps
 
@@ -78,17 +78,263 @@ func TestGracePeriodCalculation(t *testing.T) {
 	}
 }
 
-func TestAutoCloseResultCounts(t *testing.T) {
-	result := &AutoCloseResult{
-		Processed:    5,
-		Closed:       2,
-		SkippedGrace: 2,
-		SkippedHuman: 1,
+func TestIsBotComment(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"html marker", "<!-- simili-bot-report -->\n## Triage", true},
+		{"emoji marker", "🤖 Simili Triage Report\n...", true},
+		{"plain header", "### Simili Triage Report\n...", true},
+		{"normal comment", "I think this is a duplicate", false},
+		{"empty body", "", false},
+		{"partial match", "<!-- simili-bot-auto-close -->", false},
 	}
 
-	total := result.Closed + result.SkippedGrace + result.SkippedHuman
-	if total != result.Processed {
-		t.Errorf("counts don't add up: closed(%d) + grace(%d) + human(%d) = %d, want %d",
-			result.Closed, result.SkippedGrace, result.SkippedHuman, total, result.Processed)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isBotComment(tt.body)
+			if got != tt.want {
+				t.Errorf("isBotComment(%q) = %v, want %v", tt.body, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHasNegativeReaction(t *testing.T) {
+	botUsers := []string{"my-ci-bot"}
+
+	tests := []struct {
+		name     string
+		content  string
+		user     string
+		wantSkip bool // true means this reaction should trigger human activity
+	}{
+		{"thumbs down from human", "-1", "john-doe", true},
+		{"confused from human", "confused", "jane-doe", true},
+		{"thumbs up from human", "+1", "john-doe", false},
+		{"heart from human", "heart", "john-doe", false},
+		{"thumbs down from bot", "-1", "dependabot[bot]", false},
+		{"confused from bot", "confused", "gh-simili-worker", false},
+		{"thumbs down from configured bot", "-1", "my-ci-bot", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			isNegative := (tt.content == "-1" || tt.content == "confused")
+			isHuman := !isBotUser(tt.user, botUsers)
+			got := isNegative && isHuman
+			if got != tt.wantSkip {
+				t.Errorf("reaction check: content=%q user=%q => %v, want %v", tt.content, tt.user, got, tt.wantSkip)
+			}
+		})
+	}
+}
+
+func TestReopenedByHuman(t *testing.T) {
+	botUsers := []string{}
+	since := time.Now().Add(-48 * time.Hour)
+
+	type eventInput struct {
+		eventType string
+		actor     string
+		createdAt time.Time
+	}
+
+	tests := []struct {
+		name   string
+		event  eventInput
+		want   bool
+	}{
+		{
+			name:  "reopened by human after since",
+			event: eventInput{"reopened", "john-doe", since.Add(time.Hour)},
+			want:  true,
+		},
+		{
+			name:  "reopened by bot after since",
+			event: eventInput{"reopened", "dependabot[bot]", since.Add(time.Hour)},
+			want:  false,
+		},
+		{
+			name:  "reopened by human before since",
+			event: eventInput{"reopened", "john-doe", since.Add(-time.Hour)},
+			want:  false,
+		},
+		{
+			name:  "closed by human after since",
+			event: eventInput{"closed", "john-doe", since.Add(time.Hour)},
+			want:  false,
+		},
+		{
+			name:  "labeled by human after since",
+			event: eventInput{"labeled", "john-doe", since.Add(time.Hour)},
+			want:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := tt.event
+			isReopened := e.eventType == "reopened"
+			isAfterSince := e.createdAt.After(since)
+			isHuman := !isBotUser(e.actor, botUsers)
+			got := isReopened && isAfterSince && isHuman
+			if got != tt.want {
+				t.Errorf("reopen check: event=%q actor=%q at=%v => %v, want %v",
+					e.eventType, e.actor, e.createdAt, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGracePeriodFromConfig(t *testing.T) {
+	tests := []struct {
+		name            string
+		minutesOverride int
+		hoursConfig     int
+		wantDuration    time.Duration
+	}{
+		{
+			name:            "minutes override takes precedence over hours config",
+			minutesOverride: 5,
+			hoursConfig:     24,
+			wantDuration:    5 * time.Minute,
+		},
+		{
+			name:            "minutes override of 1 takes precedence over default",
+			minutesOverride: 1,
+			hoursConfig:     0,
+			wantDuration:    1 * time.Minute,
+		},
+		{
+			name:            "hours config used when no minutes override",
+			minutesOverride: 0,
+			hoursConfig:     48,
+			wantDuration:    48 * time.Hour,
+		},
+		{
+			name:            "72-hour default applied when both are zero",
+			minutesOverride: 0,
+			hoursConfig:     0,
+			wantDuration:    72 * time.Hour,
+		},
+		{
+			name:            "hours config of 1 is respected (no default override)",
+			minutesOverride: 0,
+			hoursConfig:     1,
+			wantDuration:    1 * time.Hour,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got time.Duration
+			if tt.minutesOverride > 0 {
+				got = time.Duration(tt.minutesOverride) * time.Minute
+			} else {
+				h := tt.hoursConfig
+				if h <= 0 {
+					h = 72
+				}
+				got = time.Duration(h) * time.Hour
+			}
+			if got != tt.wantDuration {
+				t.Errorf("grace period = %v, want %v", got, tt.wantDuration)
+			}
+		})
+	}
+}
+
+func TestGracePeriodMinutesExpiry(t *testing.T) {
+	tests := []struct {
+		name            string
+		minutesOverride int
+		labeledAgo      time.Duration
+		wantExpired     bool
+	}{
+		{
+			name:            "1-minute override: labeled 2 minutes ago - expired",
+			minutesOverride: 1,
+			labeledAgo:      2 * time.Minute,
+			wantExpired:     true,
+		},
+		{
+			name:            "1-minute override: labeled 30 seconds ago - not expired",
+			minutesOverride: 1,
+			labeledAgo:      30 * time.Second,
+			wantExpired:     false,
+		},
+		{
+			name:            "5-minute override: labeled 4 minutes ago - not expired",
+			minutesOverride: 5,
+			labeledAgo:      4 * time.Minute,
+			wantExpired:     false,
+		},
+		{
+			name:            "5-minute override: labeled 6 minutes ago - expired",
+			minutesOverride: 5,
+			labeledAgo:      6 * time.Minute,
+			wantExpired:     true,
+		},
+		{
+			name:            "60-minute override: labeled 59 minutes ago - not expired",
+			minutesOverride: 60,
+			labeledAgo:      59 * time.Minute,
+			wantExpired:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gracePeriod := time.Duration(tt.minutesOverride) * time.Minute
+			labeledAt := time.Now().Add(-tt.labeledAgo)
+			elapsed := time.Since(labeledAt)
+			got := elapsed >= gracePeriod
+			if got != tt.wantExpired {
+				t.Errorf("expiry check: grace=%v, elapsed≈%v => expired=%v, want %v",
+					gracePeriod, tt.labeledAgo, got, tt.wantExpired)
+			}
+		})
+	}
+}
+
+func TestAutoCloseResultCounts(t *testing.T) {
+	tests := []struct {
+		name   string
+		result AutoCloseResult
+	}{
+		{
+			name: "no errors",
+			result: AutoCloseResult{
+				Processed:    5,
+				Closed:       2,
+				SkippedGrace: 2,
+				SkippedHuman: 1,
+				Errors:       nil,
+			},
+		},
+		{
+			name: "with errors",
+			result: AutoCloseResult{
+				Processed:    5,
+				Closed:       1,
+				SkippedGrace: 1,
+				SkippedHuman: 1,
+				Errors:       []string{"#10: failed", "#11: failed"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := tt.result
+			total := r.Closed + r.SkippedGrace + r.SkippedHuman + len(r.Errors)
+			if total != r.Processed {
+				t.Errorf("counts don't add up: closed(%d) + grace(%d) + human(%d) + errors(%d) = %d, want %d",
+					r.Closed, r.SkippedGrace, r.SkippedHuman, len(r.Errors), total, r.Processed)
+			}
+		})
 	}
 }

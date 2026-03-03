@@ -17,7 +17,7 @@ import (
 	"github.com/google/go-github/v60/github"
 	"github.com/google/uuid"
 	similiConfig "github.com/similigh/simili-bot/internal/core/config"
-	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/ai"
 	similiGithub "github.com/similigh/simili-bot/internal/integrations/github"
 	"github.com/similigh/simili-bot/internal/integrations/qdrant"
 	"github.com/similigh/simili-bot/internal/utils/text"
@@ -89,13 +89,13 @@ func runIndex(cmd *cobra.Command, args []string) {
 
 	ghClient := similiGithub.NewClient(ctx, token)
 
-	geminiClient, err := gemini.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
+	embedder, err := ai.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
 	if err != nil {
 		log.Fatalf("Failed to init embedder: %v", err)
 	}
-	defer geminiClient.Close()
+	defer embedder.Close()
 	embeddingDimensions := cfg.Embedding.Dimensions
-	if dim := geminiClient.Dimensions(); dim > 0 {
+	if dim := embedder.Dimensions(); dim > 0 {
 		embeddingDimensions = dim
 	}
 
@@ -144,7 +144,7 @@ func runIndex(cmd *cobra.Command, args []string) {
 		go func(id int) {
 			defer wg.Done()
 			for job := range jobs {
-				processIssue(ctx, id, job.Issue, ghClient, geminiClient, qdrantClient, splitter, cfg.Qdrant.Collection, org, repoName, indexDryRun)
+				processIssue(ctx, id, job.Issue, ghClient, embedder, qdrantClient, splitter, cfg.Qdrant.Collection, org, repoName, indexDryRun)
 			}
 		}(i)
 	}
@@ -198,7 +198,7 @@ func runIndex(cmd *cobra.Command, args []string) {
 	log.Println("Indexing complete.")
 }
 
-func processIssue(ctx context.Context, workerID int, issue *github.Issue, gh *similiGithub.Client, em *gemini.Embedder, qd *qdrant.Client, splitter *text.RecursiveCharacterSplitter, collection, org, repo string, dryRun bool) {
+func processIssue(ctx context.Context, workerID int, issue *github.Issue, gh *similiGithub.Client, em *ai.Embedder, qd *qdrant.Client, splitter *text.RecursiveCharacterSplitter, collection, org, repo string, dryRun bool) {
 	// 1. Fetch Comments (with pagination)
 	var allComments []*github.IssueComment
 	page := 1

@@ -10,14 +10,14 @@ import (
 	"log"
 
 	"github.com/similigh/simili-bot/internal/core/pipeline"
-	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/ai"
 	"github.com/similigh/simili-bot/internal/integrations/qdrant"
 )
 
 // VectorDBPrep ensures the vector database collection exists and is ready.
 type VectorDBPrep struct {
 	client qdrant.VectorStore
-	embed  *gemini.Embedder
+	embed  *ai.Embedder
 	dryRun bool
 }
 

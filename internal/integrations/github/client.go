@@ -207,3 +207,27 @@ func (c *Client) ListIssueEvents(ctx context.Context, org, repo string, number i
 
 	return allEvents, nil
 }
+
+// ListIssueCommentReactions fetches all reactions on a specific issue comment.
+func (c *Client) ListIssueCommentReactions(ctx context.Context, org, repo string, commentID int64) ([]*github.Reaction, error) {
+	var allReactions []*github.Reaction
+	opts := &github.ListOptions{
+		PerPage: 100,
+	}
+
+	for {
+		reactions, resp, err := c.client.Reactions.ListIssueCommentReactions(ctx, org, repo, commentID, opts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list reactions for comment %d in %s/%s: %w", commentID, org, repo, err)
+		}
+
+		allReactions = append(allReactions, reactions...)
+
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	return allReactions, nil
+}

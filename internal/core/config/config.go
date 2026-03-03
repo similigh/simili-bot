@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-18
+// Last Modified: 2026-02-25
 
 // Package config handles loading and merging Simili configuration.
 package config
@@ -112,15 +112,26 @@ type TransferRule struct {
 	Enabled       *bool    `yaml:"enabled,omitempty"`
 }
 
+// VDBRoutingConfig configures VDB-based semantic transfer routing.
+type VDBRoutingConfig struct {
+	Enabled             *bool   `yaml:"enabled,omitempty"`
+	ConfidenceThreshold float64 `yaml:"confidence_threshold,omitempty"` // Default: 0.75
+	MinSamplesPerRepo   int     `yaml:"min_samples_per_repo,omitempty"` // Default: 20
+	MaxCandidates       int     `yaml:"max_candidates,omitempty"`       // Default: 3
+	ExplainDecision     bool    `yaml:"explain_decision,omitempty"`     // Default: true
+}
+
 // TransferConfig holds transfer routing settings.
 type TransferConfig struct {
-	Enabled                      *bool          `yaml:"enabled,omitempty"`
-	Rules                        []TransferRule `yaml:"rules,omitempty"`
-	LLMRoutingEnabled            *bool          `yaml:"llm_routing_enabled,omitempty"`
-	HighConfidence               float64        `yaml:"high_confidence,omitempty"`                // Default: 0.9
-	MediumConfidence             float64        `yaml:"medium_confidence,omitempty"`              // Default: 0.6
-	DuplicateConfidenceThreshold float64        `yaml:"duplicate_confidence_threshold,omitempty"` // Default: 0.8
-	RepoCollection               string         `yaml:"repo_collection,omitempty"`                // Collection for repository documentation
+	Enabled                      *bool            `yaml:"enabled,omitempty"`
+	Rules                        []TransferRule   `yaml:"rules,omitempty"`
+	LLMRoutingEnabled            *bool            `yaml:"llm_routing_enabled,omitempty"`
+	HighConfidence               float64          `yaml:"high_confidence,omitempty"`                // Default: 0.9
+	MediumConfidence             float64          `yaml:"medium_confidence,omitempty"`              // Default: 0.6
+	DuplicateConfidenceThreshold float64          `yaml:"duplicate_confidence_threshold,omitempty"` // Default: 0.8
+	RepoCollection               string           `yaml:"repo_collection,omitempty"`                // Collection for repository documentation
+	VDBRouting                   VDBRoutingConfig `yaml:"vdb_routing,omitempty"`
+	Strategy                     string           `yaml:"strategy,omitempty"` // "rules-only", "vdb-only", "hybrid" (default: "hybrid" when vdb_routing.enabled)
 }
 
 // Load reads a config file from the given path and expands environment variables.
@@ -296,6 +307,19 @@ func (c *Config) applyDefaults() {
 	if c.Transfer.RepoCollection == "" {
 		c.Transfer.RepoCollection = "simili_repos"
 	}
+	// VDB routing defaults
+	if c.Transfer.VDBRouting.ConfidenceThreshold == 0 {
+		c.Transfer.VDBRouting.ConfidenceThreshold = 0.75
+	}
+	if c.Transfer.VDBRouting.MinSamplesPerRepo == 0 {
+		c.Transfer.VDBRouting.MinSamplesPerRepo = 20
+	}
+	if c.Transfer.VDBRouting.MaxCandidates == 0 {
+		c.Transfer.VDBRouting.MaxCandidates = 3
+	}
+	if c.Transfer.VDBRouting.Enabled != nil && *c.Transfer.VDBRouting.Enabled && c.Transfer.Strategy == "" {
+		c.Transfer.Strategy = "hybrid"
+	}
 	// Auto-close defaults
 	if c.AutoClose.GracePeriodHours == 0 {
 		c.AutoClose.GracePeriodHours = 72
@@ -389,14 +413,31 @@ func mergeConfigs(parent, child *Config) *Config {
 	if child.Transfer.RepoCollection != "" {
 		result.Transfer.RepoCollection = child.Transfer.RepoCollection
 	}
+	if child.Transfer.Strategy != "" {
+		result.Transfer.Strategy = child.Transfer.Strategy
+	}
+	if child.Transfer.VDBRouting.Enabled != nil {
+		result.Transfer.VDBRouting.Enabled = child.Transfer.VDBRouting.Enabled
+	}
+	if child.Transfer.VDBRouting.ConfidenceThreshold != 0 {
+		result.Transfer.VDBRouting.ConfidenceThreshold = child.Transfer.VDBRouting.ConfidenceThreshold
+	}
+	if child.Transfer.VDBRouting.MinSamplesPerRepo != 0 {
+		result.Transfer.VDBRouting.MinSamplesPerRepo = child.Transfer.VDBRouting.MinSamplesPerRepo
+	}
+	if child.Transfer.VDBRouting.MaxCandidates != 0 {
+		result.Transfer.VDBRouting.MaxCandidates = child.Transfer.VDBRouting.MaxCandidates
+	}
+	if child.Transfer.VDBRouting.ExplainDecision {
+		result.Transfer.VDBRouting.ExplainDecision = child.Transfer.VDBRouting.ExplainDecision
+	}
 
-	// AutoClose: override if fields are set
+	// AutoClose: override if fields are set.
+	// DryRun is always copied so a child config can explicitly set it to false.
 	if child.AutoClose.GracePeriodHours != 0 {
 		result.AutoClose.GracePeriodHours = child.AutoClose.GracePeriodHours
 	}
-	if child.AutoClose.DryRun {
-		result.AutoClose.DryRun = child.AutoClose.DryRun
-	}
+	result.AutoClose.DryRun = child.AutoClose.DryRun
 
 	return &result
 }

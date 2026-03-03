@@ -3,7 +3,7 @@
 // Created: 2026-02-15
 // Last Modified: 2026-02-17
 
-package gemini
+package ai
 
 import (
 	"context"

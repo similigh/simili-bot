@@ -18,7 +18,7 @@ import (
 
 	"github.com/similigh/simili-bot/internal/core/config"
 	"github.com/similigh/simili-bot/internal/core/pipeline"
-	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/ai"
 	"github.com/similigh/simili-bot/internal/integrations/github"
 	"github.com/similigh/simili-bot/internal/integrations/qdrant"
 )
@@ -204,7 +204,7 @@ func runProcess() {
 
 	// Initialize clients with error logging
 	// Embedder
-	embedder, err := gemini.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
+	embedder, err := ai.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
 	if err == nil {
 		deps.Embedder = embedder
 		if verbose {
@@ -262,7 +262,7 @@ func runProcess() {
 	if envModel := os.Getenv("LLM_MODEL"); envModel != "" {
 		llmModel = envModel
 	}
-	llm, err := gemini.NewLLMClient(llmKey, llmModel)
+	llm, err := ai.NewLLMClient(llmKey, llmModel)
 	if err == nil {
 		deps.LLMClient = llm
 		if verbose {
