@@ -7,7 +7,7 @@ import (
 
 	"github.com/similigh/simili-bot/internal/core/config"
 	"github.com/similigh/simili-bot/internal/core/pipeline"
-	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/ai"
 )
 
 func TestResponseBuilder_buildTriageSummary(t *testing.T) {
@@ -39,7 +39,7 @@ func TestResponseBuilder_buildTriageSummary(t *testing.T) {
 	}
 
 	// Mock Quality Result
-	ctx.Metadata["quality_result"] = &gemini.QualityResult{
+	ctx.Metadata["quality_result"] = &ai.QualityResult{
 		Score:       0.85,
 		Assessment:  "excellent",
 		Issues:      []string{},
@@ -47,8 +47,8 @@ func TestResponseBuilder_buildTriageSummary(t *testing.T) {
 	}
 
 	// Mock Transfer Result (Router)
-	ctx.Metadata["router_result"] = &gemini.RouterResult{
-		BestMatch: &gemini.RepositoryRanking{
+	ctx.Metadata["router_result"] = &ai.RouterResult{
+		BestMatch: &ai.RepositoryRanking{
 			Org:        "similigh",
 			Repo:       "core-backend",
 			Confidence: 0.95,
@@ -95,8 +95,8 @@ func TestResponseBuilder_buildTransferRow_CurrentRepo(t *testing.T) {
 		Metadata: make(map[string]interface{}),
 	}
 
-	ctx.Metadata["router_result"] = &gemini.RouterResult{
-		BestMatch: &gemini.RepositoryRanking{
+	ctx.Metadata["router_result"] = &ai.RouterResult{
+		BestMatch: &ai.RepositoryRanking{
 			Org:        "similigh",
 			Repo:       "simili-bot", // Same repo
 			Confidence: 0.95,

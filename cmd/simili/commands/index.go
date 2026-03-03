@@ -17,7 +17,7 @@ import (
 	"github.com/google/go-github/v60/github"
 	"github.com/google/uuid"
 	similiConfig "github.com/similigh/simili-bot/internal/core/config"
-	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/ai"
 	similiGithub "github.com/similigh/simili-bot/internal/integrations/github"
 	"github.com/similigh/simili-bot/internal/integrations/qdrant"
 	"github.com/similigh/simili-bot/internal/utils/text"
@@ -89,7 +89,7 @@ func runIndex(cmd *cobra.Command, args []string) {
 
 	ghClient := similiGithub.NewClient(ctx, token)
 
-	geminiClient, err := gemini.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
+	geminiClient, err := ai.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
 	if err != nil {
 		log.Fatalf("Failed to init embedder: %v", err)
 	}
@@ -198,7 +198,7 @@ func runIndex(cmd *cobra.Command, args []string) {
 	log.Println("Indexing complete.")
 }
 
-func processIssue(ctx context.Context, workerID int, issue *github.Issue, gh *similiGithub.Client, em *gemini.Embedder, qd *qdrant.Client, splitter *text.RecursiveCharacterSplitter, collection, org, repo string, dryRun bool) {
+func processIssue(ctx context.Context, workerID int, issue *github.Issue, gh *similiGithub.Client, em *ai.Embedder, qd *qdrant.Client, splitter *text.RecursiveCharacterSplitter, collection, org, repo string, dryRun bool) {
 	// 1. Fetch Comments (with pagination)
 	var allComments []*github.IssueComment
 	page := 1

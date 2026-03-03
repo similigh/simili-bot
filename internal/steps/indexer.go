@@ -14,7 +14,7 @@ import (
 	"github.com/google/go-github/v60/github"
 	"github.com/google/uuid"
 	"github.com/similigh/simili-bot/internal/core/pipeline"
-	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/ai"
 	similiGithub "github.com/similigh/simili-bot/internal/integrations/github"
 	"github.com/similigh/simili-bot/internal/integrations/qdrant"
 	"github.com/similigh/simili-bot/internal/utils/text"
@@ -22,7 +22,7 @@ import (
 
 // Indexer adds/updates the issue in the vector database.
 type Indexer struct {
-	embedder *gemini.Embedder
+	embedder *ai.Embedder
 	store    qdrant.VectorStore
 	github   *similiGithub.Client
 	dryRun   bool

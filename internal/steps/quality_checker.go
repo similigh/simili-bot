@@ -9,12 +9,12 @@ import (
 	"log"
 
 	"github.com/similigh/simili-bot/internal/core/pipeline"
-	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/ai"
 )
 
 // QualityChecker assesses issue quality using LLM.
 type QualityChecker struct {
-	llm *gemini.LLMClient
+	llm *ai.LLMClient
 }
 
 // NewQualityChecker creates a new quality checker step.
@@ -42,7 +42,7 @@ func (s *QualityChecker) Run(ctx *pipeline.Context) error {
 
 	log.Printf("[quality_checker] Assessing quality for issue #%d", ctx.Issue.Number)
 
-	input := &gemini.IssueInput{
+	input := &ai.IssueInput{
 		Title:  ctx.Issue.Title,
 		Body:   ctx.Issue.Body,
 		Author: ctx.Issue.Author,

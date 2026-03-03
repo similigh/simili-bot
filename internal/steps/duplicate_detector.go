@@ -9,12 +9,12 @@ import (
 	"log"
 
 	"github.com/similigh/simili-bot/internal/core/pipeline"
-	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/ai"
 )
 
 // DuplicateDetector analyzes similarity results for duplicates using LLM.
 type DuplicateDetector struct {
-	llm *gemini.LLMClient
+	llm *ai.LLMClient
 }
 
 // NewDuplicateDetector creates a new duplicate detector step.
@@ -60,9 +60,9 @@ func (s *DuplicateDetector) Run(ctx *pipeline.Context) error {
 		maxSimilar = len(ctx.SimilarIssues)
 	}
 
-	similarInput := make([]gemini.SimilarIssueInput, maxSimilar)
+	similarInput := make([]ai.SimilarIssueInput, maxSimilar)
 	for i := 0; i < maxSimilar; i++ {
-		similarInput[i] = gemini.SimilarIssueInput{
+		similarInput[i] = ai.SimilarIssueInput{
 			Number:     ctx.SimilarIssues[i].Number,
 			Title:      ctx.SimilarIssues[i].Title,
 			Body:       ctx.SimilarIssues[i].Body,
@@ -72,8 +72,8 @@ func (s *DuplicateDetector) Run(ctx *pipeline.Context) error {
 		}
 	}
 
-	input := &gemini.DuplicateCheckInput{
-		CurrentIssue: &gemini.IssueInput{
+	input := &ai.DuplicateCheckInput{
+		CurrentIssue: &ai.IssueInput{
 			Title:  ctx.Issue.Title,
 			Body:   ctx.Issue.Body,
 			Author: ctx.Issue.Author,

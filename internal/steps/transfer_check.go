@@ -11,7 +11,7 @@ import (
 	"log"
 
 	"github.com/similigh/simili-bot/internal/core/pipeline"
-	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/ai"
 	"github.com/similigh/simili-bot/internal/integrations/qdrant"
 	"github.com/similigh/simili-bot/internal/transfer"
 )
@@ -20,9 +20,9 @@ import (
 // It first applies rule-based matching; if no rule matches and VDB routing is enabled
 // it falls back to semantic VDB search (hybrid strategy).
 type TransferCheck struct {
-	embedder    *gemini.Embedder
+	embedder    *ai.Embedder
 	vectorStore qdrant.VectorStore
-	llmClient   *gemini.LLMClient
+	llmClient   *ai.LLMClient
 }
 
 // NewTransferCheck creates a new transfer check step.
@@ -144,7 +144,7 @@ func (s *TransferCheck) Run(ctx *pipeline.Context) error {
 	reasoning := ""
 	if vdbCfg.ExplainDecision && s.llmClient != nil {
 		similar := buildSimilarForExplain(vdbResult.SimilarIssues)
-		explanation, err := s.llmClient.ExplainTransfer(ctx.Ctx, &gemini.ExplainTransferInput{
+		explanation, err := s.llmClient.ExplainTransfer(ctx.Ctx, &ai.ExplainTransferInput{
 			IssueTitle:    ctx.Issue.Title,
 			IssueBody:     ctx.Issue.Body,
 			TargetRepo:    vdbResult.Target,
@@ -195,10 +195,10 @@ func isBlockedTarget(target string, blocked []string) bool {
 }
 
 // buildSimilarForExplain converts VDB result IDs to SimilarIssueInput stubs.
-func buildSimilarForExplain(ids []string) []gemini.SimilarIssueInput {
-	out := make([]gemini.SimilarIssueInput, 0, len(ids))
+func buildSimilarForExplain(ids []string) []ai.SimilarIssueInput {
+	out := make([]ai.SimilarIssueInput, 0, len(ids))
 	for i, id := range ids {
-		out = append(out, gemini.SimilarIssueInput{
+		out = append(out, ai.SimilarIssueInput{
 			Number: i + 1,
 			Title:  id, // Best we have without full payloads
 		})

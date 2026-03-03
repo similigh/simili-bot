@@ -12,12 +12,12 @@ import (
 	"strings"
 
 	"github.com/similigh/simili-bot/internal/core/pipeline"
-	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/ai"
 )
 
 // ResponseBuilder constructs the comment to post on the issue.
 type ResponseBuilder struct {
-	llm *gemini.LLMClient
+	llm *ai.LLMClient
 }
 
 // NewResponseBuilder creates a new response builder step.
@@ -101,7 +101,7 @@ func (s *ResponseBuilder) buildTriageSummary(ctx *pipeline.Context) string {
 
 // buildQualitySection creates the quality assessment section using GitHub Alerts.
 func (s *ResponseBuilder) buildQualitySection(ctx *pipeline.Context) string {
-	qualityResult, ok := ctx.Metadata["quality_result"].(*gemini.QualityResult)
+	qualityResult, ok := ctx.Metadata["quality_result"].(*ai.QualityResult)
 	if !ok || qualityResult == nil {
 		return ""
 	}
@@ -155,7 +155,7 @@ func (s *ResponseBuilder) buildLabelsRow(ctx *pipeline.Context) string {
 
 // buildTransferRow creates the transfer row for the classification table.
 func (s *ResponseBuilder) buildTransferRow(ctx *pipeline.Context) string {
-	routerResult, ok := ctx.Metadata["router_result"].(*gemini.RouterResult)
+	routerResult, ok := ctx.Metadata["router_result"].(*ai.RouterResult)
 	if !ok || routerResult == nil || routerResult.BestMatch == nil {
 		return ""
 	}
@@ -193,7 +193,7 @@ func (s *ResponseBuilder) buildTransferRow(ctx *pipeline.Context) string {
 
 // buildQualityImprovements creates the collapsible quality suggestions section.
 func (s *ResponseBuilder) buildQualityImprovements(ctx *pipeline.Context) string {
-	qualityResult, ok := ctx.Metadata["quality_result"].(*gemini.QualityResult)
+	qualityResult, ok := ctx.Metadata["quality_result"].(*ai.QualityResult)
 	if !ok || qualityResult == nil {
 		return ""
 	}
@@ -272,7 +272,7 @@ func similarThreadTypeIcon(threadType string) string {
 
 // buildDuplicateSection creates the duplicate warning section.
 func (s *ResponseBuilder) buildDuplicateSection(ctx *pipeline.Context) string {
-	duplicateResult, ok := ctx.Metadata["duplicate_result"].(*gemini.DuplicateResult)
+	duplicateResult, ok := ctx.Metadata["duplicate_result"].(*ai.DuplicateResult)
 	if !ok || duplicateResult == nil || !duplicateResult.IsDuplicate {
 		return ""
 	}
