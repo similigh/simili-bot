@@ -12,13 +12,13 @@ import (
 	"strings"
 
 	"github.com/similigh/simili-bot/internal/core/pipeline"
-	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/ai"
 	"github.com/similigh/simili-bot/internal/integrations/qdrant"
 )
 
 // SimilaritySearch finds similar issues using the vector database.
 type SimilaritySearch struct {
-	embedder *gemini.Embedder
+	embedder *ai.Embedder
 	store    qdrant.VectorStore
 }
 

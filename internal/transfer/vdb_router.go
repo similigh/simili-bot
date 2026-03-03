@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/ai"
 	"github.com/similigh/simili-bot/internal/integrations/qdrant"
 )
 
@@ -22,7 +22,7 @@ type VDBMatchResult struct {
 	Reasoning     string   // Optional LLM explanation
 }
 
-// Embedder is the subset of gemini.Embedder used by VDBRouter.
+// Embedder is the subset of ai.Embedder used by VDBRouter.
 type Embedder interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
 }
@@ -137,7 +137,7 @@ func (r *VDBRouter) SuggestTransfer(ctx context.Context, issue *IssueInput, curr
 	}, nil
 }
 
-// VDBRouterWithGeminiEmbedder is a convenience constructor accepting *gemini.Embedder directly.
-func NewVDBRouterFromGemini(embedder *gemini.Embedder, store qdrant.VectorStore, collection string, maxResults int) *VDBRouter {
+// NewVDBRouterFromEmbedder is a convenience constructor accepting *ai.Embedder directly.
+func NewVDBRouterFromEmbedder(embedder *ai.Embedder, store qdrant.VectorStore, collection string, maxResults int) *VDBRouter {
 	return NewVDBRouter(embedder, store, collection, maxResults)
 }

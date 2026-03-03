@@ -10,14 +10,14 @@ import (
 	"log"
 
 	"github.com/similigh/simili-bot/internal/core/pipeline"
-	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/ai"
 	"github.com/similigh/simili-bot/internal/integrations/qdrant"
 )
 
 // LLMRouter analyzes issue intent and routes to best repository using LLM.
 type LLMRouter struct {
-	llm      *gemini.LLMClient
-	embedder *gemini.Embedder
+	llm      *ai.LLMClient
+	embedder *ai.Embedder
 	store    qdrant.VectorStore
 }
 
@@ -64,14 +64,14 @@ func (s *LLMRouter) Run(ctx *pipeline.Context) error {
 	log.Printf("[llm_router] Analyzing issue #%d for routing", ctx.Issue.Number)
 
 	// Collect repository candidates (include current repo to allow "stay here" decision)
-	var candidates []gemini.RepositoryCandidate
+	var candidates []ai.RepositoryCandidate
 	currentRepo := fmt.Sprintf("%s/%s", ctx.Issue.Org, ctx.Issue.Repo)
 
 	for _, repo := range ctx.Config.Repositories {
 		if !repo.Enabled || repo.Description == "" {
 			continue
 		}
-		candidates = append(candidates, gemini.RepositoryCandidate{
+		candidates = append(candidates, ai.RepositoryCandidate{
 			Org:         repo.Org,
 			Repo:        repo.Repo,
 			Description: repo.Description,
@@ -171,8 +171,8 @@ func (s *LLMRouter) Run(ctx *pipeline.Context) error {
 	}
 
 	// Call LLM to route issue (reuse currentRepo from above)
-	input := &gemini.RouteIssueInput{
-		Issue: &gemini.IssueInput{
+	input := &ai.RouteIssueInput{
+		Issue: &ai.IssueInput{
 			Title:  ctx.Issue.Title,
 			Body:   ctx.Issue.Body,
 			Author: ctx.Issue.Author,

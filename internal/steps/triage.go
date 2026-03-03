@@ -10,12 +10,12 @@ import (
 	"log"
 
 	"github.com/similigh/simili-bot/internal/core/pipeline"
-	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/ai"
 )
 
 // Triage uses LLM to suggest labels for the issue.
 type Triage struct {
-	llm *gemini.LLMClient
+	llm *ai.LLMClient
 }
 
 // NewTriage creates a new triage step.
@@ -40,8 +40,8 @@ func (s *Triage) Run(ctx *pipeline.Context) error {
 
 	log.Printf("[triage] Analyzing issue #%d for labels", ctx.Issue.Number)
 
-	// Convert pipeline.Issue to gemini.IssueInput
-	input := &gemini.IssueInput{
+	// Convert pipeline.Issue to ai.IssueInput
+	input := &ai.IssueInput{
 		Title:  ctx.Issue.Title,
 		Body:   ctx.Issue.Body,
 		Author: ctx.Issue.Author,

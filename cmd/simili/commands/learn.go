@@ -16,7 +16,7 @@ import (
 	"time"
 
 	similiConfig "github.com/similigh/simili-bot/internal/core/config"
-	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/ai"
 	similiGithub "github.com/similigh/simili-bot/internal/integrations/github"
 	"github.com/similigh/simili-bot/internal/integrations/qdrant"
 	"github.com/spf13/cobra"
@@ -89,7 +89,7 @@ func runLearn(cmd *cobra.Command, args []string) {
 	ghClient := similiGithub.NewClient(ctx, token)
 
 	// 3. Initialize Embedder
-	embedder, err := gemini.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
+	embedder, err := ai.NewEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Model)
 	if err != nil {
 		log.Fatalf("Failed to initialize embedder: %v", err)
 	}

@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/similigh/simili-bot/internal/integrations/gemini"
+	"github.com/similigh/simili-bot/internal/integrations/ai"
 	"github.com/similigh/simili-bot/internal/integrations/github"
 	"github.com/similigh/simili-bot/internal/integrations/qdrant"
 )
@@ -28,8 +28,8 @@ type StepFactory func(deps *Dependencies) (Step, error)
 
 // Dependencies holds the dependencies that can be injected into steps.
 type Dependencies struct {
-	Embedder    *gemini.Embedder
-	LLMClient   *gemini.LLMClient
+	Embedder    *ai.Embedder
+	LLMClient   *ai.LLMClient
 	VectorStore qdrant.VectorStore
 	GitHub      *github.Client
 	DryRun      bool
