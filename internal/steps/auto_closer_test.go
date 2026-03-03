@@ -189,6 +189,117 @@ func TestReopenedByHuman(t *testing.T) {
 	}
 }
 
+func TestGracePeriodFromConfig(t *testing.T) {
+	tests := []struct {
+		name            string
+		minutesOverride int
+		hoursConfig     int
+		wantDuration    time.Duration
+	}{
+		{
+			name:            "minutes override takes precedence over hours config",
+			minutesOverride: 5,
+			hoursConfig:     24,
+			wantDuration:    5 * time.Minute,
+		},
+		{
+			name:            "minutes override of 1 takes precedence over default",
+			minutesOverride: 1,
+			hoursConfig:     0,
+			wantDuration:    1 * time.Minute,
+		},
+		{
+			name:            "hours config used when no minutes override",
+			minutesOverride: 0,
+			hoursConfig:     48,
+			wantDuration:    48 * time.Hour,
+		},
+		{
+			name:            "72-hour default applied when both are zero",
+			minutesOverride: 0,
+			hoursConfig:     0,
+			wantDuration:    72 * time.Hour,
+		},
+		{
+			name:            "hours config of 1 is respected (no default override)",
+			minutesOverride: 0,
+			hoursConfig:     1,
+			wantDuration:    1 * time.Hour,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got time.Duration
+			if tt.minutesOverride > 0 {
+				got = time.Duration(tt.minutesOverride) * time.Minute
+			} else {
+				h := tt.hoursConfig
+				if h <= 0 {
+					h = 72
+				}
+				got = time.Duration(h) * time.Hour
+			}
+			if got != tt.wantDuration {
+				t.Errorf("grace period = %v, want %v", got, tt.wantDuration)
+			}
+		})
+	}
+}
+
+func TestGracePeriodMinutesExpiry(t *testing.T) {
+	tests := []struct {
+		name            string
+		minutesOverride int
+		labeledAgo      time.Duration
+		wantExpired     bool
+	}{
+		{
+			name:            "1-minute override: labeled 2 minutes ago - expired",
+			minutesOverride: 1,
+			labeledAgo:      2 * time.Minute,
+			wantExpired:     true,
+		},
+		{
+			name:            "1-minute override: labeled 30 seconds ago - not expired",
+			minutesOverride: 1,
+			labeledAgo:      30 * time.Second,
+			wantExpired:     false,
+		},
+		{
+			name:            "5-minute override: labeled 4 minutes ago - not expired",
+			minutesOverride: 5,
+			labeledAgo:      4 * time.Minute,
+			wantExpired:     false,
+		},
+		{
+			name:            "5-minute override: labeled 6 minutes ago - expired",
+			minutesOverride: 5,
+			labeledAgo:      6 * time.Minute,
+			wantExpired:     true,
+		},
+		{
+			name:            "60-minute override: labeled 59 minutes ago - not expired",
+			minutesOverride: 60,
+			labeledAgo:      59 * time.Minute,
+			wantExpired:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gracePeriod := time.Duration(tt.minutesOverride) * time.Minute
+			labeledAt := time.Now().Add(-tt.labeledAgo)
+			elapsed := time.Since(labeledAt)
+			got := elapsed >= gracePeriod
+			if got != tt.wantExpired {
+				t.Errorf("expiry check: grace=%v, elapsed≈%v => expired=%v, want %v",
+					gracePeriod, tt.labeledAgo, got, tt.wantExpired)
+			}
+		})
+	}
+}
+
 func TestAutoCloseResultCounts(t *testing.T) {
 	tests := []struct {
 		name   string

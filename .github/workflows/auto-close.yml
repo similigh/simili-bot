@@ -24,6 +24,11 @@ on:
         options:
           - 'false'
           - 'true'
+      grace_period_minutes:
+        description: 'Grace period in minutes before a potential-duplicate issue is labelled duplicate and closed (overrides config). Leave empty to use the configured default.'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -47,15 +52,26 @@ jobs:
 
       - name: Run auto-close
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GRACE_PERIOD_INPUT: ${{ inputs.grace_period_minutes }}
         run: |
           DRY_RUN_FLAG=""
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             DRY_RUN_FLAG="--dry-run"
           fi
 
+          GRACE_ARGS=()
+          if [[ -n "$GRACE_PERIOD_INPUT" ]]; then
+            if [[ "$GRACE_PERIOD_INPUT" =~ ^[0-9]+$ ]]; then
+              GRACE_ARGS=("--grace-period-minutes" "$GRACE_PERIOD_INPUT")
+            else
+              echo "::warning::grace_period_minutes must be a positive integer; ignoring value '$GRACE_PERIOD_INPUT'"
+            fi
+          fi
+
           ./simili-cli auto-close \
             --repo "${{ github.repository }}" \
             --config .github/simili.yaml \
             --verbose \
-            $DRY_RUN_FLAG
+            $DRY_RUN_FLAG \
+            "${GRACE_ARGS[@]}"
