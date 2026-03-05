@@ -283,6 +283,44 @@ embedding:
 	}
 }
 
+func TestPRCollectionIsOptional(t *testing.T) {
+	// Validate must pass even when PRCollection is empty — it is an optional field.
+	cfg := Config{
+		Qdrant: QdrantConfig{
+			URL:        "https://example.qdrant.io:6334",
+			APIKey:     "qdrant-key",
+			Collection: "issues",
+			// PRCollection intentionally omitted.
+		},
+		Embedding: EmbeddingConfig{
+			APIKey: "embedding-key",
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Expected no validation error when PRCollection is empty, got: %v", err)
+	}
+}
+
+func TestPRCollectionEnvExpansion(t *testing.T) {
+	t.Setenv("QDRANT_PR_COLLECTION", "simili_prs_v1")
+
+	yamlContent := `qdrant:
+  url: "http://localhost:6334"
+  api_key: "key"
+  collection: "issues"
+  pr_collection: "${QDRANT_PR_COLLECTION}"
+embedding:
+  api_key: "embedding-key"
+`
+	cfg, err := parseRaw([]byte(yamlContent))
+	if err != nil {
+		t.Fatalf("Failed to parse YAML: %v", err)
+	}
+	if cfg.Qdrant.PRCollection != "simili_prs_v1" {
+		t.Errorf("Expected PRCollection 'simili_prs_v1', got %q", cfg.Qdrant.PRCollection)
+	}
+}
+
 func TestLoadWithInheritanceValidatesMergedConfig(t *testing.T) {
 	// Child extends the parent but does not supply qdrant.collection.
 	// Validation must catch the missing required field in the merged result.
