@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/Kavirubc
 // Created: 2026-02-15
-// Last Modified: 2026-02-17
+// Last Modified: 2026-03-05
 
 // Package ai provides provider-neutral AI integration for embeddings and LLM.
 package ai
@@ -38,16 +38,34 @@ func DefaultRetryConfig() RetryConfig {
 	}
 }
 
-// isRetryableError reports whether err is a transient Gemini API error that
-// warrants a retry. It uses typed checking rather than string matching:
+// openAIStatusError carries the HTTP status code from an OpenAI API response.
+// It is checked by isRetryableError so that 429/5xx responses are retried.
+type openAIStatusError struct {
+	Code    int
+	Message string
+}
+
+func (e *openAIStatusError) Error() string {
+	return fmt.Sprintf("OpenAI API error (%d): %s", e.Code, e.Message)
+}
+
+// isRetryableError reports whether err is a transient API error that warrants
+// a retry. It uses typed checking rather than string matching:
 //   - REST transport errors are checked via *googleapi.Error (HTTP 429 / 5xx).
 //   - gRPC transport errors are checked via gRPC status codes
 //     (ResourceExhausted, Unavailable, Internal).
+//   - OpenAI errors are checked via *openAIStatusError (HTTP 429 / 5xx).
 //
 // Client errors (4xx other than 429) are not retried.
 func isRetryableError(err error) bool {
 	if err == nil {
 		return false
+	}
+
+	// OpenAI typed error.
+	var oaiErr *openAIStatusError
+	if errors.As(err, &oaiErr) {
+		return oaiErr.Code == 429 || (oaiErr.Code >= 500 && oaiErr.Code < 600)
 	}
 
 	// REST transport: google.golang.org/api returns *googleapi.Error.

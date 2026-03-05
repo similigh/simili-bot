@@ -55,7 +55,10 @@ func inferProviderFromKey(apiKey string) Provider {
 	return ProviderGemini
 }
 
-func callOpenAIJSON(ctx context.Context, httpClient *http.Client, apiKey, endpoint string, in, out interface{}) error {
+// callOpenAIJSON sends a POST request to the OpenAI-compatible API endpoint and
+// decodes the JSON response into out. Pass a non-empty baseURL to override the
+// default production URL (useful in tests with httptest servers).
+func callOpenAIJSON(ctx context.Context, httpClient *http.Client, apiKey, baseURL, endpoint string, in, out interface{}) error {
 	if strings.TrimSpace(apiKey) == "" {
 		return fmt.Errorf("OPENAI_API_KEY is required")
 	}
@@ -64,12 +67,16 @@ func callOpenAIJSON(ctx context.Context, httpClient *http.Client, apiKey, endpoi
 		httpClient = &http.Client{Timeout: 60 * time.Second}
 	}
 
+	if strings.TrimSpace(baseURL) == "" {
+		baseURL = openAIBaseURL
+	}
+
 	body, err := json.Marshal(in)
 	if err != nil {
 		return fmt.Errorf("failed to marshal OpenAI request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openAIBaseURL+endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+endpoint, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to create OpenAI request: %w", err)
 	}
@@ -88,7 +95,7 @@ func callOpenAIJSON(ctx context.Context, httpClient *http.Client, apiKey, endpoi
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("OpenAI API error (%d): %s", resp.StatusCode, extractOpenAIErrorMessage(respBody))
+		return &openAIStatusError{Code: resp.StatusCode, Message: extractOpenAIErrorMessage(respBody)}
 	}
 
 	if out == nil {
