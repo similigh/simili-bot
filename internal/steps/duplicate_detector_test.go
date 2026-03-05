@@ -34,7 +34,7 @@ func newTestCtx(cfg *config.Config, n int) *pipeline.Context {
 		EventType: "issues",
 	}
 	ctx := pipeline.NewContext(context.Background(), issue, cfg)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		ctx.SimilarIssues = append(ctx.SimilarIssues, pipeline.SimilarIssue{
 			Number:     i + 1,
 			Title:      "Similar issue",
