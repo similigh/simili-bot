@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/Kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-03-05
+// Last Modified: 2026-03-06
 
 package ai
 
@@ -16,6 +16,13 @@ import (
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
 )
+
+// RelatedIssueRef captures the LLM's classification of a candidate issue.
+type RelatedIssueRef struct {
+	Number       int    `json:"number"`
+	Title        string `json:"title,omitempty"`
+	Relationship string `json:"relationship"` // "duplicate" | "related" | "distinct"
+}
 
 // LLMClient provides LLM-based analysis using Gemini or OpenAI.
 type LLMClient struct {
@@ -101,11 +108,11 @@ type DuplicateCheckInput struct {
 
 // DuplicateResult holds duplicate detection analysis.
 type DuplicateResult struct {
-	IsDuplicate   bool            `json:"is_duplicate"`
-	DuplicateOf   int             `json:"duplicate_of"` // Issue number
-	Confidence    float64         `json:"confidence"`   // 0.0-1.0
-	Reasoning     string          `json:"reasoning"`
-	SimilarIssues json.RawMessage `json:"similar_issues"` // Flexible: can be []int or []object
+	IsDuplicate   bool              `json:"is_duplicate"`
+	DuplicateOf   int               `json:"duplicate_of"`    // Issue number
+	Confidence    float64           `json:"confidence"`      // 0.0-1.0
+	Reasoning     string            `json:"reasoning"`
+	RelatedIssues []RelatedIssueRef `json:"related_issues"` // LLM classification of all candidates
 }
 
 // NewLLMClient creates a new LLM client.
@@ -301,7 +308,7 @@ func (l *LLMClient) ExplainTransfer(ctx context.Context, input *ExplainTransferI
 // It retries on transient errors (429/5xx) with exponential backoff.
 func (l *LLMClient) DetectDuplicate(ctx context.Context, input *DuplicateCheckInput) (*DuplicateResult, error) {
 	if len(input.SimilarIssues) == 0 {
-		return &DuplicateResult{IsDuplicate: false, SimilarIssues: json.RawMessage("[]")}, nil
+		return &DuplicateResult{IsDuplicate: false, RelatedIssues: []RelatedIssueRef{}}, nil
 	}
 
 	prompt := buildDuplicateDetectionPrompt(input)
@@ -316,9 +323,9 @@ func (l *LLMClient) DetectDuplicate(ctx context.Context, input *DuplicateCheckIn
 		return nil, fmt.Errorf("failed to parse duplicate response: %w", err)
 	}
 
-	// Ensure non-nil SimilarIssues
-	if result.SimilarIssues == nil {
-		result.SimilarIssues = json.RawMessage("[]")
+	// Ensure non-nil RelatedIssues
+	if result.RelatedIssues == nil {
+		result.RelatedIssues = []RelatedIssueRef{}
 	}
 
 	return &result, nil

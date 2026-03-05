@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-03-05
+// Last Modified: 2026-03-06
 
 // Package config handles loading and merging Simili configuration.
 package config
@@ -89,6 +89,9 @@ type DefaultsConfig struct {
 	SimilarityThreshold float64 `yaml:"similarity_threshold"`
 	MaxSimilarToShow    int     `yaml:"max_similar_to_show"`
 	CrossRepoSearch     *bool   `yaml:"cross_repo_search,omitempty"`
+	// DuplicateCandidates is the maximum number of similar issues sent to the LLM
+	// for duplicate/relation analysis. Default: 5.
+	DuplicateCandidates int `yaml:"duplicate_candidates,omitempty"`
 }
 
 // RepositoryConfig defines a repository and its settings.
@@ -273,6 +276,9 @@ func (c *Config) applyDefaults() {
 	if c.Defaults.MaxSimilarToShow == 0 {
 		c.Defaults.MaxSimilarToShow = 5
 	}
+	if c.Defaults.DuplicateCandidates <= 0 {
+		c.Defaults.DuplicateCandidates = 5
+	}
 	if c.Defaults.CrossRepoSearch == nil {
 		t := true
 		c.Defaults.CrossRepoSearch = &t
@@ -305,7 +311,7 @@ func (c *Config) applyDefaults() {
 		c.Transfer.MediumConfidence = 0.6
 	}
 	if c.Transfer.DuplicateConfidenceThreshold == 0 {
-		c.Transfer.DuplicateConfidenceThreshold = 0.8
+		c.Transfer.DuplicateConfidenceThreshold = 0.85
 	}
 	if c.Transfer.RepoCollection == "" {
 		c.Transfer.RepoCollection = "simili_repos"
@@ -390,6 +396,9 @@ func mergeConfigs(parent, child *Config) *Config {
 	}
 	if child.Defaults.CrossRepoSearch != nil {
 		result.Defaults.CrossRepoSearch = child.Defaults.CrossRepoSearch
+	}
+	if child.Defaults.DuplicateCandidates != 0 {
+		result.Defaults.DuplicateCandidates = child.Defaults.DuplicateCandidates
 	}
 
 	// Repositories: child completely overrides if non-empty

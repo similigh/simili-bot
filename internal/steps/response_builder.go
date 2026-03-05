@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-04
+// Last Modified: 2026-03-06
 
 // Package steps provides the response builder step.
 package steps
@@ -270,39 +270,81 @@ func similarThreadTypeIcon(threadType string) string {
 	}
 }
 
-// buildDuplicateSection creates the duplicate warning section.
+// buildDuplicateSection creates the duplicate warning section and surfaces
+// related-but-not-duplicate issues from the LLM's classification.
 func (s *ResponseBuilder) buildDuplicateSection(ctx *pipeline.Context) string {
 	duplicateResult, ok := ctx.Metadata["duplicate_result"].(*ai.DuplicateResult)
-	if !ok || duplicateResult == nil || !duplicateResult.IsDuplicate {
+	if !ok || duplicateResult == nil {
 		return ""
 	}
 
-	var parts []string
-	confidencePct := int(duplicateResult.Confidence * 100)
-
-	parts = append(parts, "> [!WARNING]")
-	parts = append(parts, fmt.Sprintf("> **Possible Duplicate** (Confidence: %d%%)", confidencePct))
 	subject := "issue"
 	if ctx.Issue.EventType == "pull_request" || ctx.Issue.EventType == "pr_comment" {
 		subject = "pull request"
 	}
-	parts = append(parts, fmt.Sprintf("> This %s might be a duplicate of #%d.", subject, duplicateResult.DuplicateOf))
 
-	if duplicateResult.Reasoning != "" {
-		parts = append(parts, fmt.Sprintf("> _Reason: %s_", duplicateResult.Reasoning))
+	// Collect "related" refs from the LLM classification.
+	var relatedRefs []ai.RelatedIssueRef
+	for _, ref := range duplicateResult.RelatedIssues {
+		if ref.Relationship == "related" {
+			relatedRefs = append(relatedRefs, ref)
+		}
 	}
 
-	// Auto-close grace period warning
-	gracePeriod := ctx.Config.AutoClose.GracePeriodHours
-	if gracePeriod <= 0 {
-		gracePeriod = 72
+	var parts []string
+
+	if duplicateResult.IsDuplicate {
+		confidencePct := int(duplicateResult.Confidence * 100)
+
+		parts = append(parts, "> [!WARNING]")
+		parts = append(parts, fmt.Sprintf("> **Possible Duplicate** (Confidence: %d%%)", confidencePct))
+		parts = append(parts, fmt.Sprintf("> This %s might be a duplicate of #%d.", subject, duplicateResult.DuplicateOf))
+
+		if duplicateResult.Reasoning != "" {
+			parts = append(parts, fmt.Sprintf("> _Reason: %s_", duplicateResult.Reasoning))
+		}
+
+		// Surface related issues inline with the duplicate warning.
+		if len(relatedRefs) > 0 {
+			refs := buildRelatedRefList(relatedRefs)
+			parts = append(parts, fmt.Sprintf("> _Also related to: %s_", refs))
+		}
+
+		// Auto-close grace period warning
+		gracePeriod := ctx.Config.AutoClose.GracePeriodHours
+		if gracePeriod <= 0 {
+			gracePeriod = 72
+		}
+		parts = append(parts, ">")
+		parts = append(parts, fmt.Sprintf("> ⏳ **This %s will be automatically closed in %d hours** if no objections are raised. "+
+			"If you believe this is **not** a duplicate, please leave a comment explaining why.", subject, gracePeriod))
+	} else if len(relatedRefs) > 0 {
+		// Not a duplicate but related issues were found — emit a softer NOTE block.
+		refs := buildRelatedRefList(relatedRefs)
+		parts = append(parts, "> [!NOTE]")
+		parts = append(parts, "> **Related Issues Found**")
+		parts = append(parts, fmt.Sprintf("> This %s is not a duplicate, but is related to %s.", subject, refs))
 	}
-	parts = append(parts, ">")
-	parts = append(parts, fmt.Sprintf("> ⏳ **This %s will be automatically closed in %d hours** if no objections are raised. "+
-		"If you believe this is **not** a duplicate, please leave a comment explaining why.", subject, gracePeriod))
+
+	if len(parts) == 0 {
+		return ""
+	}
 
 	parts = append(parts, "")
 	return strings.Join(parts, "\n")
+}
+
+// buildRelatedRefList formats a slice of RelatedIssueRef into a readable list.
+func buildRelatedRefList(refs []ai.RelatedIssueRef) string {
+	items := make([]string, 0, len(refs))
+	for _, r := range refs {
+		if r.Title != "" {
+			items = append(items, fmt.Sprintf("#%d (%s)", r.Number, r.Title))
+		} else {
+			items = append(items, fmt.Sprintf("#%d", r.Number))
+		}
+	}
+	return strings.Join(items, ", ")
 }
 
 // capitalizeFirst capitalizes the first letter of a string.

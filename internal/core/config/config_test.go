@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/Kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-03-05
+// Last Modified: 2026-03-06
 
 package config
 
@@ -27,6 +27,38 @@ func TestConfigDefaults(t *testing.T) {
 
 	if cfg.Embedding.Provider != "gemini" {
 		t.Errorf("Expected Embedding.Provider to be 'gemini', got %s", cfg.Embedding.Provider)
+	}
+}
+
+func TestDuplicateCandidatesDefault(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+
+	if cfg.Defaults.DuplicateCandidates != 5 {
+		t.Errorf("Expected DuplicateCandidates to be 5, got %d", cfg.Defaults.DuplicateCandidates)
+	}
+	if cfg.Transfer.DuplicateConfidenceThreshold != 0.85 {
+		t.Errorf("Expected DuplicateConfidenceThreshold to be 0.85, got %f", cfg.Transfer.DuplicateConfidenceThreshold)
+	}
+}
+
+func TestDuplicateCandidatesYAML(t *testing.T) {
+	yamlContent := `qdrant:
+  url: "http://localhost:6334"
+  api_key: "key"
+  collection: "issues"
+embedding:
+  api_key: "embedding-key"
+defaults:
+  duplicate_candidates: 10
+`
+	cfg, err := parseRaw([]byte(yamlContent))
+	if err != nil {
+		t.Fatalf("Failed to parse YAML: %v", err)
+	}
+	cfg.applyDefaults()
+	if cfg.Defaults.DuplicateCandidates != 10 {
+		t.Errorf("Expected DuplicateCandidates 10 from YAML, got %d", cfg.Defaults.DuplicateCandidates)
 	}
 }
 

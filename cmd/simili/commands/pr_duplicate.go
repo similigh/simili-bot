@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/kavirubc
 // Created: 2026-03-05
-// Last Modified: 2026-03-05
+// Last Modified: 2026-03-06
 
 package commands
 
@@ -194,7 +194,7 @@ func runPRDuplicate(cmd *cobra.Command, args []string) {
 
 			// DetectDuplicate is issue-focused; restrict candidates to issues
 			// only so DuplicateOf is unambiguously an issue number.
-			similar := make([]ai.SimilarIssueInput, 0, 3)
+			similar := make([]ai.SimilarIssueInput, 0, prDupTopK)
 			for _, c := range out.Candidates {
 				if c.Type != "issue" {
 					continue
@@ -205,7 +205,7 @@ func runPRDuplicate(cmd *cobra.Command, args []string) {
 					URL:        c.URL,
 					Similarity: c.Score,
 				})
-				if len(similar) == 3 {
+				if len(similar) == prDupTopK {
 					break
 				}
 			}

@@ -18,6 +18,7 @@ defaults:
   similarity_threshold: 0.70
   max_similar_to_show: 5
   cross_repo_search: true
+  duplicate_candidates: 5  # Max candidates sent to LLM for duplicate/related analysis (default: 5)
 
 repositories:
   - org: "my-org"
