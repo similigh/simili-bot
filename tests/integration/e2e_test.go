@@ -37,9 +37,9 @@ func (m *MockStep) Run(ctx *pipeline.Context) error {
 	return nil
 }
 
-// TestPRDuplicateDetection verifies that the pr_collection field is wired correctly
-// through the config layer and passes validation without a real Qdrant instance.
-func TestPRDuplicateDetection(t *testing.T) {
+// TestPRCollectionConfigWiring verifies that the pr_collection field is correctly
+// parsed and validated through the config layer without requiring a live Qdrant instance.
+func TestPRCollectionConfigWiring(t *testing.T) {
 	cfg := &config.Config{
 		Qdrant: config.QdrantConfig{
 			URL:          "https://example.qdrant.io:6334",

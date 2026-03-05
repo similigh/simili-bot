@@ -126,3 +126,38 @@ func TestMergeSearchResultsNilInputs(t *testing.T) {
 		t.Errorf("Expected 0 candidates for nil inputs, got %d", len(candidates))
 	}
 }
+
+func TestMergeSearchResultsNumberKeyVariants(t *testing.T) {
+	// Indexer step stores the key as "number"; similarity.go checks both
+	// "number" and "issue_number". Verify payloadInt handles all variants.
+	hits := []*qdrant.SearchResult{
+		{
+			ID:    "a",
+			Score: 0.85,
+			Payload: map[string]any{
+				"type":   "issue",
+				"number": 7, // primary key used by internal/steps/indexer.go
+				"title":  "Via number key",
+				"url":    "https://github.com/owner/repo/issues/7",
+			},
+		},
+		{
+			// Hit with no extractable number should be silently skipped.
+			ID:    "b",
+			Score: 0.80,
+			Payload: map[string]any{
+				"type":  "issue",
+				"title": "No number",
+				"url":   "https://github.com/owner/repo/issues/0",
+			},
+		},
+	}
+
+	candidates := mergeSearchResults(hits, nil, 99)
+	if len(candidates) != 1 {
+		t.Fatalf("Expected 1 candidate (zero-number hit skipped), got %d", len(candidates))
+	}
+	if candidates[0].Number != 7 {
+		t.Errorf("Expected number=7, got %d", candidates[0].Number)
+	}
+}

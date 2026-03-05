@@ -192,31 +192,37 @@ func runPRDuplicate(cmd *cobra.Command, args []string) {
 		if llmErr == nil {
 			defer llmClient.Close()
 
-			top := out.Candidates
-			if len(top) > 3 {
-				top = top[:3]
-			}
-			similar := make([]ai.SimilarIssueInput, len(top))
-			for i, c := range top {
-				similar[i] = ai.SimilarIssueInput{
+			// DetectDuplicate is issue-focused; restrict candidates to issues
+			// only so DuplicateOf is unambiguously an issue number.
+			similar := make([]ai.SimilarIssueInput, 0, 3)
+			for _, c := range out.Candidates {
+				if c.Type != "issue" {
+					continue
+				}
+				similar = append(similar, ai.SimilarIssueInput{
 					Number:     c.Number,
 					Title:      c.Title,
 					URL:        c.URL,
 					Similarity: c.Score,
+				})
+				if len(similar) == 3 {
+					break
 				}
 			}
-			dupResult, dupErr := llmClient.DetectDuplicate(ctx, &ai.DuplicateCheckInput{
-				CurrentIssue: &ai.IssueInput{
-					Title: pr.GetTitle(),
-					Body:  pr.GetBody(),
-				},
-				SimilarIssues: similar,
-			})
-			if dupErr == nil {
-				out.DuplicateDetected = dupResult.IsDuplicate
-				out.DuplicateOf = dupResult.DuplicateOf
-				out.Confidence = dupResult.Confidence
-				out.Reasoning = dupResult.Reasoning
+			if len(similar) > 0 {
+				dupResult, dupErr := llmClient.DetectDuplicate(ctx, &ai.DuplicateCheckInput{
+					CurrentIssue: &ai.IssueInput{
+						Title: pr.GetTitle(),
+						Body:  pr.GetBody(),
+					},
+					SimilarIssues: similar,
+				})
+				if dupErr == nil {
+					out.DuplicateDetected = dupResult.IsDuplicate
+					out.DuplicateOf = dupResult.DuplicateOf
+					out.Confidence = dupResult.Confidence
+					out.Reasoning = dupResult.Reasoning
+				}
 			}
 		}
 	}
@@ -236,8 +242,13 @@ func mergeSearchResults(issueHits, prHits []*qdrant.SearchResult, currentPRNumbe
 			itemType = "issue"
 		}
 
-		number := payloadInt(hit.Payload, "issue_number", "pr_number")
-		title, _ := hit.Payload["title"].(string) //nolint:misspell
+		// Check all key variants used across indexing paths (number, issue_number, pr_number).
+		number := payloadInt(hit.Payload, "number", "issue_number", "pr_number")
+		if number == 0 {
+			return // skip hits with no extractable number to avoid bogus candidates
+		}
+
+		title, _ := hit.Payload["title"].(string)
 		url, _ := hit.Payload["url"].(string)
 
 		// Exclude the PR being checked from its own results.
