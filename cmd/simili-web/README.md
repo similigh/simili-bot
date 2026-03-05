@@ -153,8 +153,8 @@ qdrant:
 embedding:
   provider: gemini # or openai
   api_key: ${GEMINI_API_KEY} # or ${OPENAI_API_KEY}
-  model: text-embedding-004 # or text-embedding-3-small
-  dimensions: 768 # use 1536 for text-embedding-3-small
+  model: gemini-embedding-001 # or text-embedding-3-small
+  dimensions: 3072 # use 1536 for text-embedding-3-small
 
 defaults:
   similarity_threshold: 0.75

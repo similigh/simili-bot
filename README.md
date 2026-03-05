@@ -66,11 +66,10 @@ Simili supports both Gemini and OpenAI.
 Default models:
 
 - LLM: `gemini-2.0-flash-lite` (Gemini), `gpt-5.2` (OpenAI)
-- Embeddings: `text-embedding-004` (Gemini), `text-embedding-3-small` (OpenAI)
+- Embeddings: `gemini-embedding-001` (Gemini), `text-embedding-3-small` (OpenAI)
 
 If you override `embedding.model`, keep `embedding.dimensions` aligned with the model:
 
-- `text-embedding-004` -> `768`
 - `gemini-embedding-001` -> `3072`
 - `text-embedding-3-small` -> `1536`
 - `text-embedding-3-large` -> `3072`

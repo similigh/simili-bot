@@ -281,7 +281,7 @@ func (c *Config) applyDefaults() {
 		c.Embedding.Provider = "gemini"
 	}
 	if c.Embedding.Dimensions == 0 {
-		c.Embedding.Dimensions = 768
+		c.Embedding.Dimensions = 3072
 	}
 	if c.LLM.Provider == "" {
 		c.LLM.Provider = "gemini"
