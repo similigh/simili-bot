@@ -51,7 +51,7 @@ func NewEmbedder(apiKey, model string) (*Embedder, error) {
 		}
 		e.gemini = client
 		if strings.TrimSpace(model) == "" || isLikelyOpenAIEmbeddingModel(model) {
-			model = "text-embedding-004"
+			model = "gemini-embedding-001"
 		}
 	case ProviderOpenAI:
 		e.openAI = &http.Client{Timeout: 60 * time.Second}
@@ -194,8 +194,6 @@ func inferEmbeddingDimensions(provider Provider, model string) int {
 		switch {
 		case strings.Contains(m, "gemini-embedding-001"):
 			return 3072
-		case strings.Contains(m, "text-embedding-004"), strings.Contains(m, "text-embedding-005"):
-			return 768
 		default:
 			return 768
 		}
@@ -206,7 +204,7 @@ func inferEmbeddingDimensions(provider Provider, model string) int {
 
 func isLikelyGeminiEmbeddingModel(model string) bool {
 	m := strings.ToLower(strings.TrimSpace(model))
-	return strings.Contains(m, "gemini") || strings.Contains(m, "text-embedding-004") || strings.Contains(m, "text-embedding-005")
+	return strings.Contains(m, "gemini")
 }
 
 func isLikelyOpenAIEmbeddingModel(model string) bool {
