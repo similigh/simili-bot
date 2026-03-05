@@ -120,9 +120,9 @@ func TestMergeSearchResultsExcludesCurrentPR(t *testing.T) {
 }
 
 func TestMergeSearchResultsNilInputs(t *testing.T) {
-	// Both nil — should return empty slice, not panic.
+	// Both nil — should not panic and return no candidates.
 	candidates := mergeSearchResults(nil, nil, 1)
-	if candidates != nil {
-		// nil is acceptable; test only verifies no panic.
+	if len(candidates) != 0 {
+		t.Errorf("Expected 0 candidates for nil inputs, got %d", len(candidates))
 	}
 }
