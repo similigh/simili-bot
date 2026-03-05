@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/Kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-18
+// Last Modified: 2026-03-05
 
 package config
 
@@ -167,9 +167,6 @@ func TestConfigValidate(t *testing.T) {
 		Embedding: EmbeddingConfig{
 			APIKey: "embedding-key",
 		},
-		LLM: LLMConfig{
-			APIKey: "llm-key",
-		},
 	}
 
 	tests := []struct {
@@ -180,6 +177,15 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "all valid",
 			cfg:  baseConfig,
+		},
+		{
+			// llm.api_key is optional — process command falls back to embedding.api_key.
+			name: "no llm api key is still valid",
+			cfg: func() Config {
+				cfg := baseConfig
+				cfg.LLM.APIKey = ""
+				return cfg
+			}(),
 		},
 		{
 			name: "missing qdrant url",
@@ -218,15 +224,6 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: "config validation failed: embedding.api_key is empty (check EMBEDDING_API_KEY environment variable)",
 		},
 		{
-			name: "missing llm api key",
-			cfg: func() Config {
-				cfg := baseConfig
-				cfg.LLM.APIKey = ""
-				return cfg
-			}(),
-			wantErr: "config validation failed: llm.api_key is empty (check LLM_API_KEY environment variable)",
-		},
-		{
 			name: "partial config",
 			cfg: Config{
 				Qdrant: QdrantConfig{
@@ -256,11 +253,11 @@ func TestConfigValidate(t *testing.T) {
 }
 
 func TestLoadValidatesExpandedEnvironmentVariables(t *testing.T) {
+	// QDRANT_URL is intentionally left empty to trigger a validation error.
 	t.Setenv("QDRANT_URL", "")
 	t.Setenv("QDRANT_API_KEY", "qdrant-key")
 	t.Setenv("QDRANT_COLLECTION", "issues")
 	t.Setenv("EMBEDDING_API_KEY", "embedding-key")
-	t.Setenv("LLM_API_KEY", "llm-key")
 
 	yamlContent := `qdrant:
   url: "${QDRANT_URL}"
@@ -268,8 +265,6 @@ func TestLoadValidatesExpandedEnvironmentVariables(t *testing.T) {
   collection: "${QDRANT_COLLECTION}"
 embedding:
   api_key: "${EMBEDDING_API_KEY}"
-llm:
-  api_key: "${LLM_API_KEY}"
 `
 
 	path := filepath.Join(t.TempDir(), "simili.yaml")
@@ -289,17 +284,17 @@ llm:
 }
 
 func TestLoadWithInheritanceValidatesMergedConfig(t *testing.T) {
+	// Child extends the parent but does not supply qdrant.collection.
+	// Validation must catch the missing required field in the merged result.
 	childContent := `extends: "org/repo@main"
 `
 
 	parentContent := `qdrant:
   url: "https://example.qdrant.io:6334"
   api_key: "qdrant-key"
-  collection: "issues"
+  collection: ""
 embedding:
   api_key: "embedding-key"
-llm:
-  api_key: ""
 `
 
 	path := filepath.Join(t.TempDir(), "simili.yaml")
@@ -317,7 +312,7 @@ llm:
 		t.Fatalf("Expected validation error, got nil")
 	}
 
-	wantErr := "config validation failed: llm.api_key is empty (check LLM_API_KEY environment variable)"
+	wantErr := "config validation failed: qdrant.collection is empty (check QDRANT_COLLECTION environment variable)"
 	if err.Error() != wantErr {
 		t.Fatalf("Expected error %q, got %q", wantErr, err.Error())
 	}
