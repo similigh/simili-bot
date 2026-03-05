@@ -9,6 +9,11 @@ embedding:
   model: "gemini-embedding-001"
   dimensions: 3072
 
+llm:
+  provider: "gemini"
+  api_key: "${GEMINI_API_KEY}"
+  model: "gemini-2.5-flash"
+
 defaults:
   similarity_threshold: 0.70
   max_similar_to_show: 3

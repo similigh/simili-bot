@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-25
+// Last Modified: 2026-03-05
 
 // Package config handles loading and merging Simili configuration.
 package config
@@ -209,6 +209,9 @@ func parseRaw(data []byte) (*Config, error) {
 }
 
 // Validate ensures required configuration fields are present.
+// Note: llm.api_key is intentionally not required here — the process command
+// falls back to embedding.api_key when llm.api_key is unset, so rejecting the
+// entire config (and losing qdrant.collection) would be worse than proceeding.
 func (c *Config) Validate() error {
 	requiredFields := []struct {
 		name   string
@@ -219,7 +222,6 @@ func (c *Config) Validate() error {
 		{name: "qdrant.api_key", envVar: "QDRANT_API_KEY", value: c.Qdrant.APIKey},
 		{name: "qdrant.collection", envVar: "QDRANT_COLLECTION", value: c.Qdrant.Collection},
 		{name: "embedding.api_key", envVar: "EMBEDDING_API_KEY", value: c.Embedding.APIKey},
-		{name: "llm.api_key", envVar: "LLM_API_KEY", value: c.LLM.APIKey},
 	}
 
 	for _, field := range requiredFields {
