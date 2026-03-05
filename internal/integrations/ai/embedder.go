@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/Kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-17
+// Last Modified: 2026-03-05
 
 // Package ai provides AI integration for embeddings and LLM.
 package ai
@@ -25,6 +25,7 @@ type Embedder struct {
 	openAI      *http.Client
 	apiKey      string
 	model       string
+	baseURL     string // empty = production; override in tests
 	dimensions  atomic.Int32
 	retryConfig RetryConfig
 }
@@ -146,7 +147,7 @@ func (e *Embedder) embedOpenAI(ctx context.Context, text string) ([]float32, err
 			} `json:"data"`
 		}
 
-		if err := callOpenAIJSON(ctx, e.openAI, e.apiKey, "/v1/embeddings", req, &resp); err != nil {
+		if err := callOpenAIJSON(ctx, e.openAI, e.apiKey, e.baseURL, "/v1/embeddings", req, &resp); err != nil {
 			return nil, fmt.Errorf("failed to generate embedding: %w", err)
 		}
 

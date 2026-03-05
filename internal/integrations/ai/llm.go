@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/Kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-17
+// Last Modified: 2026-03-05
 
 package ai
 
@@ -24,6 +24,7 @@ type LLMClient struct {
 	openAI      *http.Client
 	apiKey      string
 	model       string
+	baseURL     string // empty = production; override in tests
 	retryConfig RetryConfig
 }
 
@@ -398,7 +399,7 @@ func (l *LLMClient) generateOpenAIText(ctx context.Context, prompt string, tempe
 		}
 
 		var resp openAIResponse
-		if err := callOpenAIJSON(ctx, l.openAI, l.apiKey, "/v1/chat/completions", req, &resp); err != nil {
+		if err := callOpenAIJSON(ctx, l.openAI, l.apiKey, l.baseURL, "/v1/chat/completions", req, &resp); err != nil {
 			return "", err
 		}
 
