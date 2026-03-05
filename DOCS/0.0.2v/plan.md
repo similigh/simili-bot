@@ -23,7 +23,7 @@ This version transforms the scaffolded v0.0.1v architecture into a **functional 
 ## Goals
 
 ### Primary Goals
-- ✅ Integrate Gemini embeddings (`gemini-embedding-001`, 768 dimensions)
+- ✅ Integrate Gemini embeddings (`gemini-embedding-001`, 3072 dimensions)
 - ✅ Integrate Gemini LLM (`gemini-2.0-flash-lite`) for triage analysis
 - ✅ Integrate Qdrant vector store for semantic search
 - ✅ Implement GitHub API client for issue operations
@@ -64,7 +64,7 @@ This version transforms the scaffolded v0.0.1v architecture into a **functional 
 - [ ] Create `internal/integrations/gemini/` package
 - [ ] Implement embedder using `gemini-embedding-001`
 - [ ] Add unit tests for embedder
-- [ ] Test with sample text (verify 768-dimensional output)
+- [ ] Test with sample text (verify 3072-dimensional output)
 
 #### LLM Implementation
 - [ ] Implement LLM client using `gemini-2.0-flash-lite`
@@ -223,14 +223,14 @@ golang.org/x/oauth2
 ## Technical Decisions
 
 ### Gemini Models
-- **Embeddings:** `gemini-embedding-001` (768 dimensions)
+- **Embeddings:** `gemini-embedding-001` (3072 dimensions)
 - **LLM:** `gemini-2.0-flash-lite` (fast, cost-effective)
 
 **Rationale:** Free tier availability, good performance, official Google support.
 
 ### Qdrant Configuration
 - **Collection:** Named per repository (e.g., `simili-bot-issues`)
-- **Vector Dimension:** 768 (matches Gemini embeddings)
+- **Vector Dimension:** 3072 (matches Gemini embeddings)
 - **Distance Metric:** Cosine similarity
 
 ### GitHub API
@@ -263,7 +263,7 @@ golang.org/x/oauth2
 v0.0.2v is complete when:
 
 - ✅ All existing files have proper headers
-- ✅ Gemini embedder generates 768-dimensional vectors
+- ✅ Gemini embedder generates 3072-dimensional vectors
 - ✅ Gemini LLM performs triage analysis
 - ✅ Qdrant stores and retrieves issue embeddings
 - ✅ GitHub API client can fetch issues and post comments

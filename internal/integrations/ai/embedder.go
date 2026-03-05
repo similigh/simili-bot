@@ -50,8 +50,19 @@ func NewEmbedder(apiKey, model string) (*Embedder, error) {
 			return nil, fmt.Errorf("failed to create Gemini client: %w", err)
 		}
 		e.gemini = client
-		if strings.TrimSpace(model) == "" || isLikelyOpenAIEmbeddingModel(model) {
+		trimmed := strings.TrimSpace(model)
+		switch trimmed {
+		case "text-embedding-004", "text-embedding-005":
+			return nil, fmt.Errorf(
+				"model %q is not a valid Gemini embedding model; use %q instead",
+				trimmed, "gemini-embedding-001",
+			)
+		case "":
 			model = "gemini-embedding-001"
+		default:
+			if isLikelyOpenAIEmbeddingModel(model) {
+				model = "gemini-embedding-001"
+			}
 		}
 	case ProviderOpenAI:
 		e.openAI = &http.Client{Timeout: 60 * time.Second}
@@ -195,7 +206,8 @@ func inferEmbeddingDimensions(provider Provider, model string) int {
 		case strings.Contains(m, "gemini-embedding-001"):
 			return 3072
 		default:
-			return 768
+			// Default to current Gemini embedding model dimension.
+			return 3072
 		}
 	default:
 		return 0
@@ -204,7 +216,16 @@ func inferEmbeddingDimensions(provider Provider, model string) int {
 
 func isLikelyGeminiEmbeddingModel(model string) bool {
 	m := strings.ToLower(strings.TrimSpace(model))
-	return strings.Contains(m, "gemini")
+	if strings.Contains(m, "gemini") {
+		return true
+	}
+	// Recognise legacy Gemini embedding identifiers so they are not
+	// accidentally forwarded to OpenAI as valid model names.
+	switch m {
+	case "text-embedding-004", "text-embedding-005":
+		return true
+	}
+	return false
 }
 
 func isLikelyOpenAIEmbeddingModel(model string) bool {
