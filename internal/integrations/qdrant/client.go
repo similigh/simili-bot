@@ -89,18 +89,21 @@ func (c *Client) ctxWithAuth(parent context.Context) (context.Context, context.C
 }
 
 // CreateCollection creates a new collection if it doesn't exist.
+// If the collection already exists, the vector dimension is validated against
+// the requested dimension and an error is returned if they differ — preventing
+// silent runtime failures when an old collection has a mismatched size.
 func (c *Client) CreateCollection(ctx context.Context, name string, dimension int) error {
-	authCtx, cancel := c.ctxWithAuth(ctx)
-	defer cancel()
-
 	// Check if exists first
 	exists, err := c.CollectionExists(ctx, name)
 	if err != nil {
 		return err
 	}
 	if exists {
-		return nil
+		return c.validateCollectionDimension(ctx, name, dimension)
 	}
+
+	authCtx, cancel := c.ctxWithAuth(ctx)
+	defer cancel()
 
 	// Create collection
 	_, err = c.collections.Create(authCtx, &pb.CreateCollection{
@@ -116,6 +119,52 @@ func (c *Client) CreateCollection(ctx context.Context, name string, dimension in
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create collection: %w", err)
+	}
+
+	return nil
+}
+
+// validateCollectionDimension fetches the existing collection's vector size and
+// returns an error if it does not match the requested dimension, so dimension
+// mismatches are caught at startup rather than deferred to write time.
+func (c *Client) validateCollectionDimension(ctx context.Context, name string, want int) error {
+	authCtx, cancel := c.ctxWithAuth(ctx)
+	defer cancel()
+
+	resp, err := c.collections.Get(authCtx, &pb.GetCollectionInfoRequest{
+		CollectionName: name,
+	})
+	if err != nil {
+		// Cannot confirm — proceed and let Qdrant reject mismatched vectors at write time.
+		return nil
+	}
+
+	result := resp.GetResult()
+	if result == nil {
+		return nil
+	}
+
+	// Path: CollectionInfo → CollectionConfig → CollectionParams → VectorsConfig → VectorParams.Size
+	colCfg := result.GetConfig()
+	if colCfg == nil {
+		return nil
+	}
+	vecsCfg := colCfg.GetParams().GetVectorsConfig()
+	if vecsCfg == nil {
+		return nil
+	}
+	got := int(vecsCfg.GetParams().GetSize())
+	if got == 0 {
+		// Sparse or named-vector collection — skip dimension check.
+		return nil
+	}
+
+	if got != want {
+		return fmt.Errorf(
+			"collection %q already exists with dimension %d but the current embedding model requires %d: "+
+				"recreate the collection or set embedding.dimensions: %d in your config",
+			name, got, want, got,
+		)
 	}
 
 	return nil
