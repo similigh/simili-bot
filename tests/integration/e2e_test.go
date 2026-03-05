@@ -66,6 +66,7 @@ func TestEndToEndPipeline(t *testing.T) {
 		Defaults: config.DefaultsConfig{
 			SimilarityThreshold: 0.8,
 			MaxSimilarToShow:    3,
+			DuplicateCandidates: 5,
 		},
 	}
 
