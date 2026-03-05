@@ -2,6 +2,7 @@ qdrant:
   url: "${QDRANT_URL}"
   api_key: "${QDRANT_API_KEY}"
   collection: "simili_bot_v1"
+  pr_collection: "${QDRANT_PR_COLLECTION}"  # Optional — leave unset to index PRs in the main collection
 
 embedding:
   provider: "gemini"

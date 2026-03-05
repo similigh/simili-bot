@@ -107,10 +107,15 @@ func runIndex(cmd *cobra.Command, args []string) {
 		}
 		defer qdrantClient.Close()
 
-		// Ensure collection exists
-		err = qdrantClient.CreateCollection(ctx, cfg.Qdrant.Collection, embeddingDimensions)
-		if err != nil {
+		// Ensure issues collection exists.
+		if err = qdrantClient.CreateCollection(ctx, cfg.Qdrant.Collection, embeddingDimensions); err != nil {
 			log.Fatalf("Failed to create/verify collection: %v", err)
+		}
+		// Ensure dedicated PR collection exists when configured.
+		if cfg.Qdrant.PRCollection != "" {
+			if err = qdrantClient.CreateCollection(ctx, cfg.Qdrant.PRCollection, embeddingDimensions); err != nil {
+				log.Fatalf("Failed to create/verify PR collection: %v", err)
+			}
 		}
 	}
 
@@ -121,24 +126,18 @@ func runIndex(cmd *cobra.Command, args []string) {
 	}
 	org, repoName := parts[0], parts[1]
 
-	// 4. Determine Start Point (Since)
-	// Checkpoint logic omitted for simplicity in v0.1.0 as standard pagination handles most cases.
-	// Users can rely on --since for updates.
-
 	log.Printf("Starting indexing for %s/%s with %d workers...", org, repoName, indexWorkers)
 
-	// Fetch loop
-	page := 1
 	splitter := text.NewRecursiveCharacterSplitter()
 
-	// Job channel
 	type Job struct {
 		Issue *github.Issue
 	}
+
 	jobs := make(chan Job, indexWorkers)
 	var wg sync.WaitGroup
 
-	// Start Workers
+	// Issue workers.
 	for i := 0; i < indexWorkers; i++ {
 		wg.Add(1)
 		go func(id int) {
@@ -149,7 +148,22 @@ func runIndex(cmd *cobra.Command, args []string) {
 		}(i)
 	}
 
-	// Issue Producer
+	// PR workers — only when a dedicated PR collection is configured.
+	var prJobs chan Job
+	if indexIncludePRs && cfg.Qdrant.PRCollection != "" {
+		prJobs = make(chan Job, indexWorkers)
+		for i := 0; i < indexWorkers; i++ {
+			wg.Add(1)
+			go func(id int) {
+				defer wg.Done()
+				for job := range prJobs {
+					processPullRequest(ctx, id, job.Issue, ghClient, embedder, qdrantClient, splitter, cfg.Qdrant.PRCollection, org, repoName, indexDryRun)
+				}
+			}(i)
+		}
+	}
+
+	// Issue/PR producer.
 	opts := &github.IssueListByRepoOptions{
 		State:       "all",
 		Sort:        "created",
@@ -158,20 +172,21 @@ func runIndex(cmd *cobra.Command, args []string) {
 	}
 
 	if indexSince != "" {
-		t, err := time.Parse(time.RFC3339, indexSince)
-		if err == nil {
+		t, parseErr := time.Parse(time.RFC3339, indexSince)
+		if parseErr == nil {
 			opts.Since = t
 		} else {
 			log.Printf("Warning: Could not parse --since as ISO8601, ignoring (fetching all)")
 		}
 	}
 
+	page := 1
 	for {
 		opts.Page = page
 		issues, resp, err := ghClient.ListIssues(ctx, org, repoName, opts)
 		if err != nil {
 			log.Printf("Error listing issues page %d: %v", page, err)
-			break // Stop producer
+			break
 		}
 
 		if len(issues) == 0 {
@@ -184,7 +199,13 @@ func runIndex(cmd *cobra.Command, args []string) {
 			if !indexIncludePRs && issue.IsPullRequest() {
 				continue
 			}
-			jobs <- Job{Issue: issue}
+			// Route PRs to the dedicated channel when available; otherwise fall
+			// through to the issues collection (backward compatibility).
+			if issue.IsPullRequest() && prJobs != nil {
+				prJobs <- Job{Issue: issue}
+			} else {
+				jobs <- Job{Issue: issue}
+			}
 		}
 
 		if resp.NextPage == 0 {
@@ -194,8 +215,101 @@ func runIndex(cmd *cobra.Command, args []string) {
 	}
 
 	close(jobs)
+	if prJobs != nil {
+		close(prJobs)
+	}
 	wg.Wait()
 	log.Println("Indexing complete.")
+}
+
+// buildPREmbeddingContent builds the text that will be embedded for a pull request.
+// Format: "Title: ...\n\nBody: ...\n\nChanged Files:\n- path/a\n- path/b"
+func buildPREmbeddingContent(title, body string, files []string) string {
+	var b strings.Builder
+	b.WriteString("Title: ")
+	b.WriteString(title)
+	b.WriteString("\n\nBody: ")
+	b.WriteString(body)
+	if len(files) > 0 {
+		b.WriteString("\n\nChanged Files:\n")
+		for _, f := range files {
+			b.WriteString("- ")
+			b.WriteString(f)
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
+}
+
+// processPullRequest indexes a single pull request into the dedicated PR collection.
+func processPullRequest(ctx context.Context, workerID int, issue *github.Issue, gh *similiGithub.Client, em *ai.Embedder, qd *qdrant.Client, splitter *text.RecursiveCharacterSplitter, prCollection, org, repo string, dryRun bool) {
+	number := issue.GetNumber()
+
+	// 1. Fetch full PR details.
+	pr, err := gh.GetPullRequest(ctx, org, repo, number)
+	if err != nil {
+		log.Printf("[Worker %d] Error fetching PR #%d: %v", workerID, number, err)
+		return
+	}
+
+	// 2. Fetch changed files.
+	rawFiles, err := gh.ListPullRequestFiles(ctx, org, repo, number)
+	if err != nil {
+		log.Printf("[Worker %d] Error fetching files for PR #%d: %v", workerID, number, err)
+		return
+	}
+	filePaths := make([]string, 0, len(rawFiles))
+	for _, f := range rawFiles {
+		if p := f.GetFilename(); p != "" {
+			filePaths = append(filePaths, p)
+		}
+	}
+
+	// 3. Build embedding content.
+	content := buildPREmbeddingContent(pr.GetTitle(), pr.GetBody(), filePaths)
+
+	// 4. Chunk.
+	chunks := splitter.SplitText(content)
+
+	// 5. Embed.
+	embeddings, err := em.EmbedBatch(ctx, chunks)
+	if err != nil {
+		log.Printf("[Worker %d] Error embedding PR #%d: %v", workerID, number, err)
+		return
+	}
+
+	// 6. Upsert.
+	if dryRun {
+		log.Printf("[DryRun] Would upsert PR #%d (%d chunks) to %s", number, len(chunks), prCollection)
+		return
+	}
+
+	changedFiles := strings.Join(filePaths, ",")
+	points := make([]*qdrant.Point, len(chunks))
+	for i, chunk := range chunks {
+		chunkID := uuid.NewMD5(uuid.NameSpaceURL, fmt.Appendf(nil, "%s/%s#PR%d-chunk-%d", org, repo, number, i)).String()
+		points[i] = &qdrant.Point{
+			ID:     chunkID,
+			Vector: embeddings[i],
+			Payload: map[string]any{
+				"org":           org,
+				"repo":          repo,
+				"pr_number":     number,
+				"text":          chunk,
+				"url":           pr.GetHTMLURL(),
+				"type":          "pull_request",
+				"state":         pr.GetState(),
+				"title":         pr.GetTitle(),
+				"changed_files": changedFiles,
+			},
+		}
+	}
+
+	if err := qd.Upsert(ctx, prCollection, points); err != nil {
+		log.Printf("[Worker %d] Error upserting PR #%d: %v", workerID, number, err)
+	} else {
+		log.Printf("[Worker %d] Indexed PR #%d", workerID, number)
+	}
 }
 
 func processIssue(ctx context.Context, workerID int, issue *github.Issue, gh *similiGithub.Client, em *ai.Embedder, qd *qdrant.Client, splitter *text.RecursiveCharacterSplitter, collection, org, repo string, dryRun bool) {

@@ -62,9 +62,10 @@ type AutoCloseConfig struct {
 
 // QdrantConfig holds Qdrant connection settings.
 type QdrantConfig struct {
-	URL        string `yaml:"url"`
-	APIKey     string `yaml:"api_key"`
-	Collection string `yaml:"collection"`
+	URL          string `yaml:"url"`
+	APIKey       string `yaml:"api_key"`
+	Collection   string `yaml:"collection"`
+	PRCollection string `yaml:"pr_collection"` // Optional — no dedicated PR indexing if empty
 }
 
 // EmbeddingConfig holds embedding provider settings.
@@ -350,6 +351,9 @@ func mergeConfigs(parent, child *Config) *Config {
 	}
 	if child.Qdrant.Collection != "" {
 		result.Qdrant.Collection = child.Qdrant.Collection
+	}
+	if child.Qdrant.PRCollection != "" {
+		result.Qdrant.PRCollection = child.Qdrant.PRCollection
 	}
 
 	// Embedding: override if any field is set
