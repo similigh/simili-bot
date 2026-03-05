@@ -37,6 +37,29 @@ func (m *MockStep) Run(ctx *pipeline.Context) error {
 	return nil
 }
 
+// TestPRDuplicateDetection verifies that the pr_collection field is wired correctly
+// through the config layer and passes validation without a real Qdrant instance.
+func TestPRDuplicateDetection(t *testing.T) {
+	cfg := &config.Config{
+		Qdrant: config.QdrantConfig{
+			URL:          "https://example.qdrant.io:6334",
+			APIKey:       "qdrant-key",
+			Collection:   "simili_bot_v1",
+			PRCollection: "simili_prs_v1",
+		},
+		Embedding: config.EmbeddingConfig{
+			APIKey: "embedding-key",
+		},
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Config with pr_collection should be valid: %v", err)
+	}
+	if cfg.Qdrant.PRCollection != "simili_prs_v1" {
+		t.Errorf("Expected PRCollection 'simili_prs_v1', got %q", cfg.Qdrant.PRCollection)
+	}
+}
+
 func TestEndToEndPipeline(t *testing.T) {
 	// 1. Setup minimal config and issue
 	cfg := &config.Config{
