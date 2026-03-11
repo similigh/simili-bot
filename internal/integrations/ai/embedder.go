@@ -182,7 +182,6 @@ func (e *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32,
 	g.SetLimit(maxBatchConcurrency)
 
 	for i, text := range texts {
-		i, text := i, text
 		g.Go(func() error {
 			embedding, err := e.Embed(ctx, text)
 			if err != nil {

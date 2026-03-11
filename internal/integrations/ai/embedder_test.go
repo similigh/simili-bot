@@ -120,7 +120,10 @@ func TestEmbedBatch_ResultsPreserveOrder(t *testing.T) {
 			return
 		}
 		var idx int
-		fmt.Sscanf(req.Input, "text-%d", &idx)
+		if _, err := fmt.Sscanf(req.Input, "text-%d", &idx); err != nil {
+			http.Error(w, "invalid input format", http.StatusBadRequest)
+			return
+		}
 
 		type embItem struct {
 			Embedding []float64 `json:"embedding"`
