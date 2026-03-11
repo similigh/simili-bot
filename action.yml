@@ -26,6 +26,14 @@ inputs:
     description: 'GitHub token with elevated permissions for transfers'
     required: false
 
+outputs:
+  claude_code_triggered:
+    description: 'Set to "true" when an @simili-bot comment triggers Claude Code'
+  claude_code_query:
+    description: 'The extracted query for Claude Code'
+  claude_code_model_override:
+    description: 'Model override flag (e.g. "opus") if -opus was used'
+
 runs:
   using: 'docker'
   image: 'Dockerfile'

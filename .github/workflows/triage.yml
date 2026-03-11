@@ -7,15 +7,19 @@ on:
     types: [opened, edited, reopened]
   issue_comment:
     types: [created]
+  pull_request_review_comment:
+    types: [created]
 
 concurrency:
   group: simili-${{ github.event.issue.number || github.event.pull_request.number }}
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
   issues: write
   pull-requests: write
+  id-token: write
+  actions: read
 
 jobs:
   triage:
@@ -24,13 +28,14 @@ jobs:
     # Always run for issues: opened/edited/reopened events.
     if: >
       github.event_name != 'issue_comment' ||
-      (github.actor != 'gh-simili-bot' && github.actor != 'github-actions[bot]')
+      (github.actor != 'gh-simili-bot' && github.actor != 'github-actions[bot]' && github.actor != 'claude[bot]')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Run Simili Bot
-        uses: ./ 
+        id: simili
+        uses: ./
         env:
           QDRANT_URL: ${{ secrets.QDRANT_URL }}
           QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
@@ -40,3 +45,12 @@ jobs:
           command: process
           github_token: ${{ secrets.SIMILI_BOT_TOKEN || secrets.GITHUB_TOKEN }}
           transfer_token: ${{ secrets.TRANSFER_TOKEN }}
+
+      # Claude Code — runs only when @simili-bot is triggered by an authorized user
+      - name: Run Claude Code
+        if: steps.simili.outputs.claude_code_triggered == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          trigger_phrase: "@simili-bot"
+          claude_args: ${{ steps.simili.outputs.claude_code_model_override && format('--model {0}', steps.simili.outputs.claude_code_model_override) || '' }}
