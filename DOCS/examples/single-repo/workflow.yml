@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: similigh/simili-bot@v1
+      - uses: similigh/simili-bot@main
         id: simili
         with:
           config_path: .github/simili.yaml

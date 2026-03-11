@@ -67,7 +67,7 @@ Enable `@simili-bot` in PR comments for AI-powered code fixes using Claude Code.
 
 2. Add `CLAUDE_CODE_OAUTH_TOKEN` as a repository secret in **Settings → Secrets → Actions**.
 
-3. The example workflow already includes the Claude Code step. If you copied an older version, ensure your workflow has the conditional Claude Code step after `similigh/simili-bot@v1`. See [the example workflow](./examples/single-repo/workflow.yml).
+3. The example workflow already includes the Claude Code step. If you copied an older version, ensure your workflow has the conditional Claude Code step after `similigh/simili-bot@main`. See [the example workflow](./examples/single-repo/workflow.yml).
 
 4. (Optional) Create a `CLAUDE.md` file in your repo root describing your project's architecture and coding standards. Claude Code reads this automatically for context.
 
