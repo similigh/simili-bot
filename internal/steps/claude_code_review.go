@@ -39,9 +39,15 @@ func (s *CommandHandler) handleSecurityReviewTrigger(ctx *pipeline.Context) erro
 			"Do NOT pad the review with generic advice — only report concrete findings.",
 		ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number)
 
-	writeGitHubOutput("claude_code_triggered", "true")
-	writeGitHubOutput("claude_code_prompt", prompt)
-	writeGitHubOutput("claude_code_mode", "security_review")
+	if err := writeGitHubOutput("claude_code_triggered", "true"); err != nil {
+		log.Printf("[command_handler] Warning: failed to write GITHUB_OUTPUT claude_code_triggered: %v", err)
+	}
+	if err := writeGitHubOutput("claude_code_prompt", prompt); err != nil {
+		log.Printf("[command_handler] Warning: failed to write GITHUB_OUTPUT claude_code_prompt: %v", err)
+	}
+	if err := writeGitHubOutput("claude_code_mode", "security_review"); err != nil {
+		log.Printf("[command_handler] Warning: failed to write GITHUB_OUTPUT claude_code_mode: %v", err)
+	}
 
 	return pipeline.ErrSkipPipeline
 }
@@ -74,9 +80,15 @@ func (s *CommandHandler) handleReviewChecklistTrigger(ctx *pipeline.Context) err
 		ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number,
 		checklist.String())
 
-	writeGitHubOutput("claude_code_triggered", "true")
-	writeGitHubOutput("claude_code_prompt", prompt)
-	writeGitHubOutput("claude_code_mode", "review_checklist")
+	if err := writeGitHubOutput("claude_code_triggered", "true"); err != nil {
+		log.Printf("[command_handler] Warning: failed to write GITHUB_OUTPUT claude_code_triggered: %v", err)
+	}
+	if err := writeGitHubOutput("claude_code_prompt", prompt); err != nil {
+		log.Printf("[command_handler] Warning: failed to write GITHUB_OUTPUT claude_code_prompt: %v", err)
+	}
+	if err := writeGitHubOutput("claude_code_mode", "review_checklist"); err != nil {
+		log.Printf("[command_handler] Warning: failed to write GITHUB_OUTPUT claude_code_mode: %v", err)
+	}
 
 	return pipeline.ErrSkipPipeline
 }

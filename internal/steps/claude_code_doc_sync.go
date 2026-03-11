@@ -32,9 +32,15 @@ func (s *CommandHandler) handleDocSyncTrigger(ctx *pipeline.Context, changedFile
 		"- "+strings.Join(changedFiles, "\n- "),
 		"- "+strings.Join(cfg.DocPaths, "\n- "))
 
-	writeGitHubOutput("claude_code_triggered", "true")
-	writeGitHubOutput("claude_code_prompt", prompt)
-	writeGitHubOutput("claude_code_mode", "doc_sync")
+	if err := writeGitHubOutput("claude_code_triggered", "true"); err != nil {
+		log.Printf("[command_handler] Warning: failed to write GITHUB_OUTPUT claude_code_triggered: %v", err)
+	}
+	if err := writeGitHubOutput("claude_code_prompt", prompt); err != nil {
+		log.Printf("[command_handler] Warning: failed to write GITHUB_OUTPUT claude_code_prompt: %v", err)
+	}
+	if err := writeGitHubOutput("claude_code_mode", "doc_sync"); err != nil {
+		log.Printf("[command_handler] Warning: failed to write GITHUB_OUTPUT claude_code_mode: %v", err)
+	}
 
 	return pipeline.ErrSkipPipeline
 }
@@ -45,13 +51,22 @@ func matchesDocSyncPaths(changedFiles []string, watchPaths []string) []string {
 	var matched []string
 	for _, file := range changedFiles {
 		for _, pattern := range watchPaths {
-			if ok, _ := filepath.Match(pattern, file); ok {
+			ok, err := filepath.Match(pattern, file)
+			if err != nil {
+				log.Printf("[doc_sync] Warning: invalid glob pattern %q for file %q: %v", pattern, file, err)
+				continue
+			}
+			if ok {
 				matched = append(matched, file)
 				break
 			}
 			// Also try matching just the filename against the pattern
 			// for patterns like "*.go"
-			if ok, _ := filepath.Match(pattern, filepath.Base(file)); ok {
+			ok, err = filepath.Match(pattern, filepath.Base(file))
+			if err != nil {
+				continue
+			}
+			if ok {
 				matched = append(matched, file)
 				break
 			}

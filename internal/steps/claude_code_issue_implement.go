@@ -35,9 +35,15 @@ func (s *CommandHandler) handleIssueImplementTrigger(ctx *pipeline.Context) erro
 		ctx.Issue.Title, ctx.Issue.Body)
 
 	// Write outputs.
-	writeGitHubOutput("claude_code_triggered", "true")
-	writeGitHubOutput("claude_code_prompt", prompt)
-	writeGitHubOutput("claude_code_mode", "issue_implement")
+	if err := writeGitHubOutput("claude_code_triggered", "true"); err != nil {
+		log.Printf("[command_handler] Warning: failed to write GITHUB_OUTPUT claude_code_triggered: %v", err)
+	}
+	if err := writeGitHubOutput("claude_code_prompt", prompt); err != nil {
+		log.Printf("[command_handler] Warning: failed to write GITHUB_OUTPUT claude_code_prompt: %v", err)
+	}
+	if err := writeGitHubOutput("claude_code_mode", "issue_implement"); err != nil {
+		log.Printf("[command_handler] Warning: failed to write GITHUB_OUTPUT claude_code_mode: %v", err)
+	}
 
 	return pipeline.ErrSkipPipeline
 }

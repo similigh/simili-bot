@@ -126,8 +126,7 @@ func (s *CommandHandler) checkClaudeCodeLabelTriggers(ctx *pipeline.Context) err
 	}
 
 	// PR label triggers: security review and review checklist.
-	if (ctx.Issue.EventType == "pull_request" || ctx.Issue.EventType == "pr_comment") &&
-		ctx.Issue.EventAction == "labeled" {
+	if ctx.Issue.EventType == "pull_request" && ctx.Issue.EventAction == "labeled" {
 
 		// Security Review: PR labeled with trigger label (e.g., "security-review").
 		if cc.SecurityReview.Enabled != nil && *cc.SecurityReview.Enabled {

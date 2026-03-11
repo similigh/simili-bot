@@ -40,9 +40,15 @@ func (s *CommandHandler) handleMaintenanceTrigger(ctx *pipeline.Context) error {
 		tasks.String(),
 		ctx.Issue.Org, ctx.Issue.Repo)
 
-	writeGitHubOutput("claude_code_triggered", "true")
-	writeGitHubOutput("claude_code_prompt", prompt)
-	writeGitHubOutput("claude_code_mode", "maintenance")
+	if err := writeGitHubOutput("claude_code_triggered", "true"); err != nil {
+		log.Printf("[command_handler] Warning: failed to write GITHUB_OUTPUT claude_code_triggered: %v", err)
+	}
+	if err := writeGitHubOutput("claude_code_prompt", prompt); err != nil {
+		log.Printf("[command_handler] Warning: failed to write GITHUB_OUTPUT claude_code_prompt: %v", err)
+	}
+	if err := writeGitHubOutput("claude_code_mode", "maintenance"); err != nil {
+		log.Printf("[command_handler] Warning: failed to write GITHUB_OUTPUT claude_code_mode: %v", err)
+	}
 
 	return pipeline.ErrSkipPipeline
 }
