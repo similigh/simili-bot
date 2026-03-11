@@ -63,6 +63,13 @@ func (s *CommandHandler) Run(ctx *pipeline.Context) error {
 		}
 
 		command := strings.ToLower(body)
+
+		// Check for @simili-bot trigger (Claude Code integration).
+		// This runs before slash-commands so "@simili-bot /undo" doesn't accidentally undo.
+		if strings.Contains(command, "@simili-bot") {
+			return s.handleClaudeCodeTrigger(ctx, body)
+		}
+
 		if strings.HasPrefix(command, "/") {
 			log.Printf("[command_handler] Processing command: %s", command)
 			switch {

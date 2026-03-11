@@ -355,6 +355,9 @@ func enrichIssueFromGitHubEvent(issue *pipeline.Issue, raw map[string]interface{
 				issue.CommentAuthor = login
 			}
 		}
+		if assoc, ok := comm["author_association"].(string); ok {
+			issue.CommentAuthorAssociation = assoc
+		}
 	}
 
 	if iss, ok := raw["issue"].(map[string]interface{}); ok {
