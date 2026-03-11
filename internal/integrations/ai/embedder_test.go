@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestInferEmbeddingDimensions(t *testing.T) {
@@ -107,18 +108,27 @@ func TestEmbedBatch_EmptyInput(t *testing.T) {
 }
 
 func TestEmbedBatch_ResultsPreserveOrder(t *testing.T) {
-	// Track the order in which requests arrive — each call returns a unique embedding
-	// so we can verify the output is indexed correctly regardless of goroutine scheduling.
-	var counter atomic.Int32
+	// The handler parses the input text ("text-N") and encodes N+1 as the first
+	// embedding value. This lets us deterministically verify that results[i]
+	// corresponds to texts[i] regardless of goroutine scheduling order.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		n := counter.Add(1)
+		var req struct {
+			Input string `json:"input"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		var idx int
+		fmt.Sscanf(req.Input, "text-%d", &idx)
+
 		type embItem struct {
 			Embedding []float64 `json:"embedding"`
 		}
 		type embResp struct {
 			Data []embItem `json:"data"`
 		}
-		b, _ := json.Marshal(embResp{Data: []embItem{{Embedding: []float64{float64(n), 0.0, 0.0}}}})
+		b, _ := json.Marshal(embResp{Data: []embItem{{Embedding: []float64{float64(idx + 1), 0.0, 0.0}}}})
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
 		_, _ = w.Write(b)
@@ -143,6 +153,11 @@ func TestEmbedBatch_ResultsPreserveOrder(t *testing.T) {
 	for i, emb := range results {
 		if len(emb) == 0 {
 			t.Errorf("result[%d] is empty", i)
+			continue
+		}
+		// texts[i] = "text-i", so the handler encodes i+1 as emb[0].
+		if got, want := emb[0], float32(i+1); got != want {
+			t.Errorf("result[%d][0] = %v, want %v (order not preserved)", i, got, want)
 		}
 	}
 }
@@ -189,6 +204,9 @@ func TestEmbedBatch_ConcurrencyLimit(t *testing.T) {
 				break
 			}
 		}
+		// Hold the request briefly so multiple goroutines overlap in-flight,
+		// making the concurrency cap observable.
+		time.Sleep(5 * time.Millisecond)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
 		_, _ = w.Write(embeddingOKBody())

@@ -179,14 +179,11 @@ func (e *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32,
 
 	embeddings := make([][]float32, len(texts))
 	g, ctx := errgroup.WithContext(ctx)
-	sem := make(chan struct{}, maxBatchConcurrency)
+	g.SetLimit(maxBatchConcurrency)
 
 	for i, text := range texts {
 		i, text := i, text
 		g.Go(func() error {
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
 			embedding, err := e.Embed(ctx, text)
 			if err != nil {
 				return fmt.Errorf("failed to embed text %d: %w", i, err)
