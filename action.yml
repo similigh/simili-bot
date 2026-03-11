@@ -28,9 +28,13 @@ inputs:
 
 outputs:
   claude_code_triggered:
-    description: 'Set to "true" when an @simili-bot comment triggers Claude Code'
+    description: 'Set to "true" when a Claude Code feature is triggered'
   claude_code_query:
-    description: 'The extracted query for Claude Code'
+    description: 'The extracted query for @simili-bot mention triggers'
+  claude_code_prompt:
+    description: 'The full prompt built by the Go handler for Claude Code'
+  claude_code_mode:
+    description: 'Which feature triggered: mention, issue_implement, doc_sync, security_review, review_checklist, maintenance'
   claude_code_model_override:
     description: 'Model override flag (e.g. "opus") if -opus was used'
 

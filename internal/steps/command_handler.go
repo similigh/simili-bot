@@ -92,7 +92,7 @@ func (s *CommandHandler) Run(ctx *pipeline.Context) error {
 	// label triggers and then scan comment history for transfer loops.
 	if ctx.Issue.EventType == "issues" || ctx.Issue.EventType == "pull_request" || ctx.Issue.EventType == "pr_comment" {
 		// Claude Code label-based features (only if claude_code is enabled).
-		if ctx.Config.ClaudeCode.Enabled != nil && *ctx.Config.ClaudeCode.Enabled {
+		if ctx.Config != nil && ctx.Config.ClaudeCode.Enabled != nil && *ctx.Config.ClaudeCode.Enabled {
 			if err := s.checkClaudeCodeLabelTriggers(ctx); err != nil {
 				return err
 			}
@@ -102,7 +102,7 @@ func (s *CommandHandler) Run(ctx *pipeline.Context) error {
 
 	// Scheduled / workflow_dispatch events → maintenance.
 	if ctx.Issue.EventType == "schedule" || ctx.Issue.EventType == "workflow_dispatch" {
-		if ctx.Config.ClaudeCode.Enabled != nil && *ctx.Config.ClaudeCode.Enabled &&
+		if ctx.Config != nil && ctx.Config.ClaudeCode.Enabled != nil && *ctx.Config.ClaudeCode.Enabled &&
 			ctx.Config.ClaudeCode.Maintenance.Enabled != nil && *ctx.Config.ClaudeCode.Maintenance.Enabled {
 			return s.handleMaintenanceTrigger(ctx)
 		}
