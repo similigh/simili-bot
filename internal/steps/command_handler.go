@@ -119,7 +119,7 @@ func (s *CommandHandler) checkClaudeCodeLabelTriggers(ctx *pipeline.Context) err
 	// Issue Implementation: issue labeled with trigger label (e.g., "implement").
 	if ctx.Issue.EventType == "issues" && ctx.Issue.EventAction == "labeled" {
 		if cc.IssueImplement.Enabled != nil && *cc.IssueImplement.Enabled {
-			if hasLabel(ctx.Issue.Labels, cc.IssueImplement.TriggerLabel) {
+			if labelTriggered(ctx.Issue, cc.IssueImplement.TriggerLabel) {
 				return s.handleIssueImplementTrigger(ctx)
 			}
 		}
@@ -130,14 +130,14 @@ func (s *CommandHandler) checkClaudeCodeLabelTriggers(ctx *pipeline.Context) err
 
 		// Security Review: PR labeled with trigger label (e.g., "security-review").
 		if cc.SecurityReview.Enabled != nil && *cc.SecurityReview.Enabled {
-			if hasLabel(ctx.Issue.Labels, cc.SecurityReview.TriggerLabel) {
+			if labelTriggered(ctx.Issue, cc.SecurityReview.TriggerLabel) {
 				return s.handleSecurityReviewTrigger(ctx)
 			}
 		}
 
 		// Review Checklist: PR labeled with trigger label (e.g., "review-checklist").
 		if cc.ReviewChecklist.Enabled != nil && *cc.ReviewChecklist.Enabled {
-			if hasLabel(ctx.Issue.Labels, cc.ReviewChecklist.TriggerLabel) {
+			if labelTriggered(ctx.Issue, cc.ReviewChecklist.TriggerLabel) {
 				return s.handleReviewChecklistTrigger(ctx)
 			}
 		}
@@ -146,7 +146,8 @@ func (s *CommandHandler) checkClaudeCodeLabelTriggers(ctx *pipeline.Context) err
 	// Doc Sync: PR opened/updated that changes watched paths.
 	if ctx.Issue.EventType == "pull_request" &&
 		(ctx.Issue.EventAction == "opened" || ctx.Issue.EventAction == "synchronize") {
-		if cc.DocSync.Enabled != nil && *cc.DocSync.Enabled && len(cc.DocSync.WatchPaths) > 0 {
+		if cc.DocSync.Enabled != nil && *cc.DocSync.Enabled &&
+			len(cc.DocSync.WatchPaths) > 0 && len(cc.DocSync.DocPaths) > 0 {
 			// Changed files are passed via metadata from the event payload.
 			if changedFiles, ok := ctx.Metadata["changed_files"].([]string); ok && len(changedFiles) > 0 {
 				matched := matchesDocSyncPaths(changedFiles, cc.DocSync.WatchPaths)
@@ -168,6 +169,17 @@ func hasLabel(labels []string, target string) bool {
 		}
 	}
 	return false
+}
+
+// labelTriggered returns true if the given label was just applied to the issue/PR.
+// When AddedLabel is populated (from the webhook "label" field), only that specific
+// label is checked — preventing re-triggers when unrelated labels are added later.
+// Falls back to checking the full label list for backward compatibility (e.g. in tests).
+func labelTriggered(issue *pipeline.Issue, target string) bool {
+	if issue.AddedLabel != "" {
+		return strings.EqualFold(issue.AddedLabel, target)
+	}
+	return hasLabel(issue.Labels, target)
 }
 
 // analyzeHistoryForLoops checks history for undo commands and previous transfers to preventing loops
