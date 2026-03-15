@@ -389,6 +389,13 @@ func enrichIssueFromGitHubEvent(issue *pipeline.Issue, raw map[string]interface{
 		}
 	}
 
+	// For "labeled" events, capture the specific label that was just added.
+	if label, ok := raw["label"].(map[string]interface{}); ok {
+		if name, ok := label["name"].(string); ok {
+			issue.AddedLabel = name
+		}
+	}
+
 	if issue.EventType == "" {
 		issue.EventType = os.Getenv("GITHUB_EVENT_NAME")
 	}

@@ -40,6 +40,7 @@ type Issue struct {
 	Body                     string
 	State                    string // "open" or "closed"
 	Labels                   []string
+	AddedLabel               string // The single label just added (on "labeled" events)
 	Author                   string
 	URL                      string
 	CreatedAt                time.Time // When the issue was created
