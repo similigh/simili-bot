@@ -15,8 +15,12 @@ import (
 	"time"
 
 	"github.com/google/generative-ai-go/genai"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/api/option"
 )
+
+// maxBatchConcurrency limits the number of concurrent embedding requests in EmbedBatch.
+const maxBatchConcurrency = 10
 
 // Embedder generates embeddings using Gemini or OpenAI.
 type Embedder struct {
@@ -166,19 +170,30 @@ func (e *Embedder) embedOpenAI(ctx context.Context, text string) ([]float32, err
 	})
 }
 
-// EmbedBatch generates embeddings for multiple texts.
+// EmbedBatch generates embeddings for multiple texts in parallel.
+// It uses up to maxBatchConcurrency concurrent requests to the embedding API.
 func (e *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
 	if len(texts) == 0 {
 		return nil, fmt.Errorf("texts cannot be empty")
 	}
 
 	embeddings := make([][]float32, len(texts))
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(maxBatchConcurrency)
+
 	for i, text := range texts {
-		embedding, err := e.Embed(ctx, text)
-		if err != nil {
-			return nil, fmt.Errorf("failed to embed text %d: %w", i, err)
-		}
-		embeddings[i] = embedding
+		g.Go(func() error {
+			embedding, err := e.Embed(ctx, text)
+			if err != nil {
+				return fmt.Errorf("failed to embed text %d: %w", i, err)
+			}
+			embeddings[i] = embedding
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	return embeddings, nil
