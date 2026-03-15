@@ -49,6 +49,7 @@ Fixes #
 - [ ] I have made corresponding changes to the documentation
 - [ ] My changes generate no new warnings
 - [ ] New and existing unit tests pass locally with my changes
+- [ ] All commits are signed off (`git commit -s`) — see [DCO](../CONTRIBUTING.md#developer-certificate-of-origin-dco)
 
 ## Additional Notes
 
