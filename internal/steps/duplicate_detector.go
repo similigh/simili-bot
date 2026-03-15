@@ -1,20 +1,27 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/kavirubc
 // Created: 2026-02-04
-// Last Modified: 2026-02-04
+// Last Modified: 2026-03-06
 
 package steps
 
 import (
+	"context"
 	"log"
 
 	"github.com/similigh/simili-bot/internal/core/pipeline"
 	"github.com/similigh/simili-bot/internal/integrations/ai"
 )
 
+// duplicateDetectorLLM is the subset of ai.LLMClient used by DuplicateDetector.
+// Using an interface here enables unit-testing without a real LLM connection.
+type duplicateDetectorLLM interface {
+	DetectDuplicate(ctx context.Context, input *ai.DuplicateCheckInput) (*ai.DuplicateResult, error)
+}
+
 // DuplicateDetector analyzes similarity results for duplicates using LLM.
 type DuplicateDetector struct {
-	llm *ai.LLMClient
+	llm duplicateDetectorLLM
 }
 
 // NewDuplicateDetector creates a new duplicate detector step.
@@ -54,8 +61,11 @@ func (s *DuplicateDetector) Run(ctx *pipeline.Context) error {
 
 	log.Printf("[duplicate_detector] Analyzing %d similar issues for duplicates", len(ctx.SimilarIssues))
 
-	// Convert similar issues to LLM input format (top 3 only)
-	maxSimilar := 3
+	// Use configured candidate limit (default 5 per issue #56).
+	maxSimilar := ctx.Config.Defaults.DuplicateCandidates
+	if maxSimilar <= 0 {
+		maxSimilar = 5
+	}
 	if len(ctx.SimilarIssues) < maxSimilar {
 		maxSimilar = len(ctx.SimilarIssues)
 	}
@@ -88,13 +98,14 @@ func (s *DuplicateDetector) Run(ctx *pipeline.Context) error {
 		return nil // Graceful degradation
 	}
 
-	// Store in context
+	// Store full result and related issues in context.
 	ctx.Metadata["duplicate_result"] = result
+	ctx.Metadata["related_issues"] = result.RelatedIssues
 
-	// Get threshold from config (default 0.8)
+	// Get threshold from config (default 0.85 to align with prompt guidance).
 	threshold := ctx.Config.Transfer.DuplicateConfidenceThreshold
 	if threshold == 0 {
-		threshold = 0.8
+		threshold = 0.85
 	}
 
 	// Store reasoning regardless of duplicate status

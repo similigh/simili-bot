@@ -37,12 +37,36 @@ func (m *MockStep) Run(ctx *pipeline.Context) error {
 	return nil
 }
 
+// TestPRCollectionConfigWiring verifies that the pr_collection field is correctly
+// parsed and validated through the config layer without requiring a live Qdrant instance.
+func TestPRCollectionConfigWiring(t *testing.T) {
+	cfg := &config.Config{
+		Qdrant: config.QdrantConfig{
+			URL:          "https://example.qdrant.io:6334",
+			APIKey:       "qdrant-key",
+			Collection:   "simili_bot_v1",
+			PRCollection: "simili_prs_v1",
+		},
+		Embedding: config.EmbeddingConfig{
+			APIKey: "embedding-key",
+		},
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Config with pr_collection should be valid: %v", err)
+	}
+	if cfg.Qdrant.PRCollection != "simili_prs_v1" {
+		t.Errorf("Expected PRCollection 'simili_prs_v1', got %q", cfg.Qdrant.PRCollection)
+	}
+}
+
 func TestEndToEndPipeline(t *testing.T) {
 	// 1. Setup minimal config and issue
 	cfg := &config.Config{
 		Defaults: config.DefaultsConfig{
 			SimilarityThreshold: 0.8,
 			MaxSimilarToShow:    3,
+			DuplicateCandidates: 5,
 		},
 	}
 

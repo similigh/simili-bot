@@ -2,9 +2,13 @@ name: Simili Issue & PR Triage
 
 on:
   issues:
-    types: [opened, edited, reopened]
+    types: [opened, edited, reopened, labeled]
   pull_request:
-    types: [opened, edited, reopened]
+    types: [opened, edited, reopened, synchronize, labeled, ready_for_review]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
 
 jobs:
   process:
@@ -12,12 +16,15 @@ jobs:
     permissions:
       issues: write
       pull-requests: write
-      contents: read
+      contents: write
+      id-token: write
+      actions: read
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: similigh/simili-bot@v1
+      - uses: similigh/simili-bot@main
+        id: simili
         with:
           config_path: .github/simili.yaml
         env:
@@ -25,3 +32,12 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           QDRANT_URL: ${{ secrets.QDRANT_URL }}
           QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+
+      # Claude Code — runs only when simili-bot triggers it (optional)
+      - uses: anthropics/claude-code-action@v1
+        if: steps.simili.outputs.claude_code_triggered == 'true'
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          trigger_phrase: "@simili-bot"
+          prompt: ${{ steps.simili.outputs.claude_code_prompt }}
+          claude_args: ${{ steps.simili.outputs.claude_code_model_override && format('--model {0}', steps.simili.outputs.claude_code_model_override) || '' }}

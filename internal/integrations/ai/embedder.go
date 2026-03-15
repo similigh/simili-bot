@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/Kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-17
+// Last Modified: 2026-03-05
 
 // Package ai provides AI integration for embeddings and LLM.
 package ai
@@ -25,6 +25,7 @@ type Embedder struct {
 	openAI      *http.Client
 	apiKey      string
 	model       string
+	baseURL     string // empty = production; override in tests
 	dimensions  atomic.Int32
 	retryConfig RetryConfig
 }
@@ -50,8 +51,19 @@ func NewEmbedder(apiKey, model string) (*Embedder, error) {
 			return nil, fmt.Errorf("failed to create Gemini client: %w", err)
 		}
 		e.gemini = client
-		if strings.TrimSpace(model) == "" || isLikelyOpenAIEmbeddingModel(model) {
-			model = "text-embedding-004"
+		trimmed := strings.TrimSpace(model)
+		switch trimmed {
+		case "text-embedding-004", "text-embedding-005":
+			return nil, fmt.Errorf(
+				"model %q is not a valid Gemini embedding model; use %q instead",
+				trimmed, "gemini-embedding-001",
+			)
+		case "":
+			model = "gemini-embedding-001"
+		default:
+			if isLikelyOpenAIEmbeddingModel(model) {
+				model = "gemini-embedding-001"
+			}
 		}
 	case ProviderOpenAI:
 		e.openAI = &http.Client{Timeout: 60 * time.Second}
@@ -135,7 +147,7 @@ func (e *Embedder) embedOpenAI(ctx context.Context, text string) ([]float32, err
 			} `json:"data"`
 		}
 
-		if err := callOpenAIJSON(ctx, e.openAI, e.apiKey, "/v1/embeddings", req, &resp); err != nil {
+		if err := callOpenAIJSON(ctx, e.openAI, e.apiKey, e.baseURL, "/v1/embeddings", req, &resp); err != nil {
 			return nil, fmt.Errorf("failed to generate embedding: %w", err)
 		}
 
@@ -194,10 +206,9 @@ func inferEmbeddingDimensions(provider Provider, model string) int {
 		switch {
 		case strings.Contains(m, "gemini-embedding-001"):
 			return 3072
-		case strings.Contains(m, "text-embedding-004"), strings.Contains(m, "text-embedding-005"):
-			return 768
 		default:
-			return 768
+			// Default to current Gemini embedding model dimension.
+			return 3072
 		}
 	default:
 		return 0
@@ -206,7 +217,16 @@ func inferEmbeddingDimensions(provider Provider, model string) int {
 
 func isLikelyGeminiEmbeddingModel(model string) bool {
 	m := strings.ToLower(strings.TrimSpace(model))
-	return strings.Contains(m, "gemini") || strings.Contains(m, "text-embedding-004") || strings.Contains(m, "text-embedding-005")
+	if strings.Contains(m, "gemini") {
+		return true
+	}
+	// Recognise legacy Gemini embedding identifiers so they are not
+	// accidentally forwarded to OpenAI as valid model names.
+	switch m {
+	case "text-embedding-004", "text-embedding-005":
+		return true
+	}
+	return false
 }
 
 func isLikelyOpenAIEmbeddingModel(model string) bool {

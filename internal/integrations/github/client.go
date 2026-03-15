@@ -208,6 +208,35 @@ func (c *Client) ListIssueEvents(ctx context.Context, org, repo string, number i
 	return allEvents, nil
 }
 
+// GetPullRequest fetches full PR details including changed file count.
+func (c *Client) GetPullRequest(ctx context.Context, org, repo string, number int) (*github.PullRequest, error) {
+	pr, _, err := c.client.PullRequests.Get(ctx, org, repo, number)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch pull request #%d: %w", number, err)
+	}
+	return pr, nil
+}
+
+// ListPullRequestFiles fetches all changed files for a PR (paginated).
+func (c *Client) ListPullRequestFiles(ctx context.Context, org, repo string, number int) ([]*github.CommitFile, error) {
+	var allFiles []*github.CommitFile
+	opts := &github.ListOptions{PerPage: 100}
+
+	for {
+		files, resp, err := c.client.PullRequests.ListFiles(ctx, org, repo, number, opts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list files for PR #%d: %w", number, err)
+		}
+		allFiles = append(allFiles, files...)
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	return allFiles, nil
+}
+
 // ListIssueCommentReactions fetches all reactions on a specific issue comment.
 func (c *Client) ListIssueCommentReactions(ctx context.Context, org, repo string, commentID int64) ([]*github.Reaction, error) {
 	var allReactions []*github.Reaction

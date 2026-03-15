@@ -355,6 +355,9 @@ func enrichIssueFromGitHubEvent(issue *pipeline.Issue, raw map[string]interface{
 				issue.CommentAuthor = login
 			}
 		}
+		if assoc, ok := comm["author_association"].(string); ok {
+			issue.CommentAuthorAssociation = assoc
+		}
 	}
 
 	if iss, ok := raw["issue"].(map[string]interface{}); ok {
@@ -383,6 +386,13 @@ func enrichIssueFromGitHubEvent(issue *pipeline.Issue, raw map[string]interface{
 		}
 		if name, ok := repo["name"].(string); ok {
 			issue.Repo = name
+		}
+	}
+
+	// For "labeled" events, capture the specific label that was just added.
+	if label, ok := raw["label"].(map[string]interface{}); ok {
+		if name, ok := label["name"].(string); ok {
+			issue.AddedLabel = name
 		}
 	}
 

@@ -63,6 +63,13 @@ func (s *CommandHandler) Run(ctx *pipeline.Context) error {
 		}
 
 		command := strings.ToLower(body)
+
+		// Check for @simili-bot trigger (Claude Code integration).
+		// This runs before slash-commands so "@simili-bot /undo" doesn't accidentally undo.
+		if strings.Contains(command, "@simili-bot") {
+			return s.handleClaudeCodeTrigger(ctx, body)
+		}
+
 		if strings.HasPrefix(command, "/") {
 			log.Printf("[command_handler] Processing command: %s", command)
 			switch {
@@ -81,16 +88,98 @@ func (s *CommandHandler) Run(ctx *pipeline.Context) error {
 		return pipeline.ErrSkipPipeline
 	}
 
-	// For issue, pull_request, and pr_comment events, scan comment history to prevent
-	// transfer loops and respect prior /undo commands.
-	// issue_comment is handled exclusively above: /undo is dispatched, unknown slash-
-	// commands return nil without further processing, and non-command comments skip the
-	// pipeline entirely — so it never reaches this point.
+	// For issue, pull_request, and pr_comment events, check for Claude Code
+	// label triggers and then scan comment history for transfer loops.
 	if ctx.Issue.EventType == "issues" || ctx.Issue.EventType == "pull_request" || ctx.Issue.EventType == "pr_comment" {
+		// Claude Code label-based features (only if claude_code is enabled).
+		if ctx.Config != nil && ctx.Config.ClaudeCode.Enabled != nil && *ctx.Config.ClaudeCode.Enabled {
+			if err := s.checkClaudeCodeLabelTriggers(ctx); err != nil {
+				return err
+			}
+		}
 		return s.analyzeHistoryForLoops(ctx)
 	}
 
+	// Scheduled / workflow_dispatch events → maintenance.
+	if ctx.Issue.EventType == "schedule" || ctx.Issue.EventType == "workflow_dispatch" {
+		if ctx.Config != nil && ctx.Config.ClaudeCode.Enabled != nil && *ctx.Config.ClaudeCode.Enabled &&
+			ctx.Config.ClaudeCode.Maintenance.Enabled != nil && *ctx.Config.ClaudeCode.Maintenance.Enabled {
+			return s.handleMaintenanceTrigger(ctx)
+		}
+	}
+
 	return nil
+}
+
+// checkClaudeCodeLabelTriggers checks if the current event matches any
+// label-based Claude Code feature triggers.
+func (s *CommandHandler) checkClaudeCodeLabelTriggers(ctx *pipeline.Context) error {
+	cc := ctx.Config.ClaudeCode
+
+	// Issue Implementation: issue labeled with trigger label (e.g., "implement").
+	if ctx.Issue.EventType == "issues" && ctx.Issue.EventAction == "labeled" {
+		if cc.IssueImplement.Enabled != nil && *cc.IssueImplement.Enabled {
+			if labelTriggered(ctx.Issue, cc.IssueImplement.TriggerLabel) {
+				return s.handleIssueImplementTrigger(ctx)
+			}
+		}
+	}
+
+	// PR label triggers: security review and review checklist.
+	if ctx.Issue.EventType == "pull_request" && ctx.Issue.EventAction == "labeled" {
+
+		// Security Review: PR labeled with trigger label (e.g., "security-review").
+		if cc.SecurityReview.Enabled != nil && *cc.SecurityReview.Enabled {
+			if labelTriggered(ctx.Issue, cc.SecurityReview.TriggerLabel) {
+				return s.handleSecurityReviewTrigger(ctx)
+			}
+		}
+
+		// Review Checklist: PR labeled with trigger label (e.g., "review-checklist").
+		if cc.ReviewChecklist.Enabled != nil && *cc.ReviewChecklist.Enabled {
+			if labelTriggered(ctx.Issue, cc.ReviewChecklist.TriggerLabel) {
+				return s.handleReviewChecklistTrigger(ctx)
+			}
+		}
+	}
+
+	// Doc Sync: PR opened/updated that changes watched paths.
+	if ctx.Issue.EventType == "pull_request" &&
+		(ctx.Issue.EventAction == "opened" || ctx.Issue.EventAction == "synchronize") {
+		if cc.DocSync.Enabled != nil && *cc.DocSync.Enabled &&
+			len(cc.DocSync.WatchPaths) > 0 && len(cc.DocSync.DocPaths) > 0 {
+			// Changed files are passed via metadata from the event payload.
+			if changedFiles, ok := ctx.Metadata["changed_files"].([]string); ok && len(changedFiles) > 0 {
+				matched := matchesDocSyncPaths(changedFiles, cc.DocSync.WatchPaths)
+				if len(matched) > 0 {
+					return s.handleDocSyncTrigger(ctx, matched)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// hasLabel checks if the given label exists in the issue's label list.
+func hasLabel(labels []string, target string) bool {
+	for _, l := range labels {
+		if strings.EqualFold(l, target) {
+			return true
+		}
+	}
+	return false
+}
+
+// labelTriggered returns true if the given label was just applied to the issue/PR.
+// When AddedLabel is populated (from the webhook "label" field), only that specific
+// label is checked — preventing re-triggers when unrelated labels are added later.
+// Falls back to checking the full label list for backward compatibility (e.g. in tests).
+func labelTriggered(issue *pipeline.Issue, target string) bool {
+	if issue.AddedLabel != "" {
+		return strings.EqualFold(issue.AddedLabel, target)
+	}
+	return hasLabel(issue.Labels, target)
 }
 
 // analyzeHistoryForLoops checks history for undo commands and previous transfers to preventing loops

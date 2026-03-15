@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/Kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-05
+// Last Modified: 2026-03-06
 
 package ai
 
@@ -301,6 +301,7 @@ func buildDuplicateDetectionPrompt(input *DuplicateCheckInput) string {
 CRITICAL DISTINCTION:
 - DUPLICATE: Two issues describe the EXACT SAME bug or feature request. Fixing one FULLY resolves the other. They must have the same root cause AND the same expected outcome.
 - RELATED: Two issues are in the same area or component but describe DIFFERENT problems. They may share keywords or affect the same module, but have different root causes or expected outcomes.
+- DISTINCT: Issues that have little to no meaningful overlap in problem space.
 
 Being related is NOT enough to be a duplicate. Most issues in the same project will be related.
 
@@ -318,14 +319,25 @@ Compare the FULL CONTENT of the current issue against each similar issue. Look f
 
 If two issues affect the same module but describe different failure modes, different inputs, or different expected behaviors, they are RELATED, not duplicates.
 
+Classify EVERY candidate in the related_issues array:
+- "duplicate" = same root cause, same expected fix, fully resolved by one fix
+- "related" = shares component/area but different root cause or outcome
+- "distinct" = different problem entirely, minimal overlap
+
+Do NOT set is_duplicate: true for "related" issues. The related_issues array is the correct place to record them. An issue can be a duplicate of one issue while also being related to others.
+
 Respond with valid JSON:
 {
   "is_duplicate": false,
   "duplicate_of": 0,
   "confidence": 0.0,
   "reasoning": "Brief explanation",
-  "similar_issues": []
+  "related_issues": [
+    {"number": 0, "title": "...", "relationship": "related"}
+  ]
 }
+
+Always populate related_issues for all candidates; omit none.
 
 Confidence scale (be strict):
 - 0.95+ = Certain duplicate (identical problem, identical root cause)

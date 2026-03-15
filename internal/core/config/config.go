@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-25
+// Last Modified: 2026-03-06
 
 // Package config handles loading and merging Simili configuration.
 package config
@@ -47,6 +47,9 @@ type Config struct {
 	// AutoClose configures the automatic closure of confirmed duplicate issues.
 	AutoClose AutoCloseConfig `yaml:"auto_close,omitempty"`
 
+	// ClaudeCode configures Claude Code integration features.
+	ClaudeCode ClaudeCodeConfig `yaml:"claude_code,omitempty"`
+
 	// BotUsers is a list of GitHub usernames whose events should be ignored
 	// to prevent infinite comment loops. Built-in heuristics (e.g. "[bot]" suffix,
 	// "gh-simili" prefix) always apply in addition to this list.
@@ -62,9 +65,10 @@ type AutoCloseConfig struct {
 
 // QdrantConfig holds Qdrant connection settings.
 type QdrantConfig struct {
-	URL        string `yaml:"url"`
-	APIKey     string `yaml:"api_key"`
-	Collection string `yaml:"collection"`
+	URL          string `yaml:"url"`
+	APIKey       string `yaml:"api_key"`
+	Collection   string `yaml:"collection"`
+	PRCollection string `yaml:"pr_collection"` // Optional — no dedicated PR indexing if empty
 }
 
 // EmbeddingConfig holds embedding provider settings.
@@ -88,6 +92,9 @@ type DefaultsConfig struct {
 	SimilarityThreshold float64 `yaml:"similarity_threshold"`
 	MaxSimilarToShow    int     `yaml:"max_similar_to_show"`
 	CrossRepoSearch     *bool   `yaml:"cross_repo_search,omitempty"`
+	// DuplicateCandidates is the maximum number of similar issues sent to the LLM
+	// for duplicate/relation analysis. Default: 5.
+	DuplicateCandidates int `yaml:"duplicate_candidates,omitempty"`
 }
 
 // RepositoryConfig defines a repository and its settings.
@@ -119,6 +126,50 @@ type VDBRoutingConfig struct {
 	MinSamplesPerRepo   int     `yaml:"min_samples_per_repo,omitempty"` // Default: 20
 	MaxCandidates       int     `yaml:"max_candidates,omitempty"`       // Default: 3
 	ExplainDecision     bool    `yaml:"explain_decision,omitempty"`     // Default: true
+}
+
+// ClaudeCodeConfig holds all Claude Code integration settings.
+type ClaudeCodeConfig struct {
+	Enabled         *bool                     `yaml:"enabled,omitempty"`
+	TriggerPhrase   string                    `yaml:"trigger_phrase,omitempty"` // Default: "@simili-bot"
+	IssueImplement  ClaudeCodeIssueImplement  `yaml:"issue_implement,omitempty"`
+	DocSync         ClaudeCodeDocSync         `yaml:"doc_sync,omitempty"`
+	SecurityReview  ClaudeCodeSecurityReview  `yaml:"security_review,omitempty"`
+	ReviewChecklist ClaudeCodeReviewChecklist `yaml:"review_checklist,omitempty"`
+	Maintenance     ClaudeCodeMaintenance     `yaml:"maintenance,omitempty"`
+}
+
+// ClaudeCodeIssueImplement configures label-triggered issue implementation.
+type ClaudeCodeIssueImplement struct {
+	Enabled      *bool  `yaml:"enabled,omitempty"`
+	TriggerLabel string `yaml:"trigger_label,omitempty"` // Default: "implement"
+	BaseBranch   string `yaml:"base_branch,omitempty"`   // Default: "main"
+}
+
+// ClaudeCodeDocSync configures automatic documentation updates.
+type ClaudeCodeDocSync struct {
+	Enabled    *bool    `yaml:"enabled,omitempty"`
+	WatchPaths []string `yaml:"watch_paths,omitempty"` // Glob patterns for source paths to watch
+	DocPaths   []string `yaml:"doc_paths,omitempty"`   // Paths to documentation files
+}
+
+// ClaudeCodeSecurityReview configures selective security analysis.
+type ClaudeCodeSecurityReview struct {
+	Enabled      *bool  `yaml:"enabled,omitempty"`
+	TriggerLabel string `yaml:"trigger_label,omitempty"` // Default: "security-review"
+}
+
+// ClaudeCodeReviewChecklist configures custom PR review checklists.
+type ClaudeCodeReviewChecklist struct {
+	Enabled      *bool    `yaml:"enabled,omitempty"`
+	TriggerLabel string   `yaml:"trigger_label,omitempty"` // Default: "review-checklist"
+	Items        []string `yaml:"items,omitempty"`         // Checklist items
+}
+
+// ClaudeCodeMaintenance configures scheduled maintenance tasks.
+type ClaudeCodeMaintenance struct {
+	Enabled *bool    `yaml:"enabled,omitempty"`
+	Tasks   []string `yaml:"tasks,omitempty"` // Maintenance task descriptions
 }
 
 // TransferConfig holds transfer routing settings.
@@ -209,6 +260,9 @@ func parseRaw(data []byte) (*Config, error) {
 }
 
 // Validate ensures required configuration fields are present.
+// Note: llm.api_key is intentionally not required here — the process command
+// falls back to embedding.api_key when llm.api_key is unset, so rejecting the
+// entire config (and losing qdrant.collection) would be worse than proceeding.
 func (c *Config) Validate() error {
 	requiredFields := []struct {
 		name   string
@@ -219,7 +273,6 @@ func (c *Config) Validate() error {
 		{name: "qdrant.api_key", envVar: "QDRANT_API_KEY", value: c.Qdrant.APIKey},
 		{name: "qdrant.collection", envVar: "QDRANT_COLLECTION", value: c.Qdrant.Collection},
 		{name: "embedding.api_key", envVar: "EMBEDDING_API_KEY", value: c.Embedding.APIKey},
-		{name: "llm.api_key", envVar: "LLM_API_KEY", value: c.LLM.APIKey},
 	}
 
 	for _, field := range requiredFields {
@@ -270,6 +323,9 @@ func (c *Config) applyDefaults() {
 	if c.Defaults.MaxSimilarToShow == 0 {
 		c.Defaults.MaxSimilarToShow = 5
 	}
+	if c.Defaults.DuplicateCandidates <= 0 {
+		c.Defaults.DuplicateCandidates = 5
+	}
 	if c.Defaults.CrossRepoSearch == nil {
 		t := true
 		c.Defaults.CrossRepoSearch = &t
@@ -278,7 +334,7 @@ func (c *Config) applyDefaults() {
 		c.Embedding.Provider = "gemini"
 	}
 	if c.Embedding.Dimensions == 0 {
-		c.Embedding.Dimensions = 768
+		c.Embedding.Dimensions = 3072
 	}
 	if c.LLM.Provider == "" {
 		c.LLM.Provider = "gemini"
@@ -302,7 +358,7 @@ func (c *Config) applyDefaults() {
 		c.Transfer.MediumConfidence = 0.6
 	}
 	if c.Transfer.DuplicateConfidenceThreshold == 0 {
-		c.Transfer.DuplicateConfidenceThreshold = 0.8
+		c.Transfer.DuplicateConfidenceThreshold = 0.85
 	}
 	if c.Transfer.RepoCollection == "" {
 		c.Transfer.RepoCollection = "simili_repos"
@@ -323,6 +379,22 @@ func (c *Config) applyDefaults() {
 	// Auto-close defaults
 	if c.AutoClose.GracePeriodHours == 0 {
 		c.AutoClose.GracePeriodHours = 72
+	}
+	// Claude Code defaults
+	if c.ClaudeCode.TriggerPhrase == "" {
+		c.ClaudeCode.TriggerPhrase = "@simili-bot"
+	}
+	if c.ClaudeCode.IssueImplement.TriggerLabel == "" {
+		c.ClaudeCode.IssueImplement.TriggerLabel = "implement"
+	}
+	if c.ClaudeCode.IssueImplement.BaseBranch == "" {
+		c.ClaudeCode.IssueImplement.BaseBranch = "main"
+	}
+	if c.ClaudeCode.SecurityReview.TriggerLabel == "" {
+		c.ClaudeCode.SecurityReview.TriggerLabel = "security-review"
+	}
+	if c.ClaudeCode.ReviewChecklist.TriggerLabel == "" {
+		c.ClaudeCode.ReviewChecklist.TriggerLabel = "review-checklist"
 	}
 }
 
@@ -348,6 +420,9 @@ func mergeConfigs(parent, child *Config) *Config {
 	}
 	if child.Qdrant.Collection != "" {
 		result.Qdrant.Collection = child.Qdrant.Collection
+	}
+	if child.Qdrant.PRCollection != "" {
+		result.Qdrant.PRCollection = child.Qdrant.PRCollection
 	}
 
 	// Embedding: override if any field is set
@@ -384,6 +459,9 @@ func mergeConfigs(parent, child *Config) *Config {
 	}
 	if child.Defaults.CrossRepoSearch != nil {
 		result.Defaults.CrossRepoSearch = child.Defaults.CrossRepoSearch
+	}
+	if child.Defaults.DuplicateCandidates != 0 {
+		result.Defaults.DuplicateCandidates = child.Defaults.DuplicateCandidates
 	}
 
 	// Repositories: child completely overrides if non-empty
@@ -438,6 +516,53 @@ func mergeConfigs(parent, child *Config) *Config {
 		result.AutoClose.GracePeriodHours = child.AutoClose.GracePeriodHours
 	}
 	result.AutoClose.DryRun = child.AutoClose.DryRun
+
+	// ClaudeCode: override if fields are set.
+	if child.ClaudeCode.Enabled != nil {
+		result.ClaudeCode.Enabled = child.ClaudeCode.Enabled
+	}
+	if child.ClaudeCode.TriggerPhrase != "" {
+		result.ClaudeCode.TriggerPhrase = child.ClaudeCode.TriggerPhrase
+	}
+	if child.ClaudeCode.IssueImplement.Enabled != nil {
+		result.ClaudeCode.IssueImplement.Enabled = child.ClaudeCode.IssueImplement.Enabled
+	}
+	if child.ClaudeCode.IssueImplement.TriggerLabel != "" {
+		result.ClaudeCode.IssueImplement.TriggerLabel = child.ClaudeCode.IssueImplement.TriggerLabel
+	}
+	if child.ClaudeCode.IssueImplement.BaseBranch != "" {
+		result.ClaudeCode.IssueImplement.BaseBranch = child.ClaudeCode.IssueImplement.BaseBranch
+	}
+	if child.ClaudeCode.DocSync.Enabled != nil {
+		result.ClaudeCode.DocSync.Enabled = child.ClaudeCode.DocSync.Enabled
+	}
+	if len(child.ClaudeCode.DocSync.WatchPaths) > 0 {
+		result.ClaudeCode.DocSync.WatchPaths = child.ClaudeCode.DocSync.WatchPaths
+	}
+	if len(child.ClaudeCode.DocSync.DocPaths) > 0 {
+		result.ClaudeCode.DocSync.DocPaths = child.ClaudeCode.DocSync.DocPaths
+	}
+	if child.ClaudeCode.SecurityReview.Enabled != nil {
+		result.ClaudeCode.SecurityReview.Enabled = child.ClaudeCode.SecurityReview.Enabled
+	}
+	if child.ClaudeCode.SecurityReview.TriggerLabel != "" {
+		result.ClaudeCode.SecurityReview.TriggerLabel = child.ClaudeCode.SecurityReview.TriggerLabel
+	}
+	if child.ClaudeCode.ReviewChecklist.Enabled != nil {
+		result.ClaudeCode.ReviewChecklist.Enabled = child.ClaudeCode.ReviewChecklist.Enabled
+	}
+	if child.ClaudeCode.ReviewChecklist.TriggerLabel != "" {
+		result.ClaudeCode.ReviewChecklist.TriggerLabel = child.ClaudeCode.ReviewChecklist.TriggerLabel
+	}
+	if len(child.ClaudeCode.ReviewChecklist.Items) > 0 {
+		result.ClaudeCode.ReviewChecklist.Items = child.ClaudeCode.ReviewChecklist.Items
+	}
+	if child.ClaudeCode.Maintenance.Enabled != nil {
+		result.ClaudeCode.Maintenance.Enabled = child.ClaudeCode.Maintenance.Enabled
+	}
+	if len(child.ClaudeCode.Maintenance.Tasks) > 0 {
+		result.ClaudeCode.Maintenance.Tasks = child.ClaudeCode.Maintenance.Tasks
+	}
 
 	return &result
 }

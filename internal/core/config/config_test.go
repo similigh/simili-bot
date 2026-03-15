@@ -1,7 +1,7 @@
 // Author: Kaviru Hapuarachchi
 // GitHub: https://github.com/Kavirubc
 // Created: 2026-02-02
-// Last Modified: 2026-02-18
+// Last Modified: 2026-03-06
 
 package config
 
@@ -27,6 +27,38 @@ func TestConfigDefaults(t *testing.T) {
 
 	if cfg.Embedding.Provider != "gemini" {
 		t.Errorf("Expected Embedding.Provider to be 'gemini', got %s", cfg.Embedding.Provider)
+	}
+}
+
+func TestDuplicateCandidatesDefault(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+
+	if cfg.Defaults.DuplicateCandidates != 5 {
+		t.Errorf("Expected DuplicateCandidates to be 5, got %d", cfg.Defaults.DuplicateCandidates)
+	}
+	if cfg.Transfer.DuplicateConfidenceThreshold != 0.85 {
+		t.Errorf("Expected DuplicateConfidenceThreshold to be 0.85, got %f", cfg.Transfer.DuplicateConfidenceThreshold)
+	}
+}
+
+func TestDuplicateCandidatesYAML(t *testing.T) {
+	yamlContent := `qdrant:
+  url: "http://localhost:6334"
+  api_key: "key"
+  collection: "issues"
+embedding:
+  api_key: "embedding-key"
+defaults:
+  duplicate_candidates: 10
+`
+	cfg, err := parseRaw([]byte(yamlContent))
+	if err != nil {
+		t.Fatalf("Failed to parse YAML: %v", err)
+	}
+	cfg.applyDefaults()
+	if cfg.Defaults.DuplicateCandidates != 10 {
+		t.Errorf("Expected DuplicateCandidates 10 from YAML, got %d", cfg.Defaults.DuplicateCandidates)
 	}
 }
 
@@ -167,9 +199,6 @@ func TestConfigValidate(t *testing.T) {
 		Embedding: EmbeddingConfig{
 			APIKey: "embedding-key",
 		},
-		LLM: LLMConfig{
-			APIKey: "llm-key",
-		},
 	}
 
 	tests := []struct {
@@ -180,6 +209,15 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "all valid",
 			cfg:  baseConfig,
+		},
+		{
+			// llm.api_key is optional — process command falls back to embedding.api_key.
+			name: "no llm api key is still valid",
+			cfg: func() Config {
+				cfg := baseConfig
+				cfg.LLM.APIKey = ""
+				return cfg
+			}(),
 		},
 		{
 			name: "missing qdrant url",
@@ -218,15 +256,6 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: "config validation failed: embedding.api_key is empty (check EMBEDDING_API_KEY environment variable)",
 		},
 		{
-			name: "missing llm api key",
-			cfg: func() Config {
-				cfg := baseConfig
-				cfg.LLM.APIKey = ""
-				return cfg
-			}(),
-			wantErr: "config validation failed: llm.api_key is empty (check LLM_API_KEY environment variable)",
-		},
-		{
 			name: "partial config",
 			cfg: Config{
 				Qdrant: QdrantConfig{
@@ -256,11 +285,11 @@ func TestConfigValidate(t *testing.T) {
 }
 
 func TestLoadValidatesExpandedEnvironmentVariables(t *testing.T) {
+	// QDRANT_URL is intentionally left empty to trigger a validation error.
 	t.Setenv("QDRANT_URL", "")
 	t.Setenv("QDRANT_API_KEY", "qdrant-key")
 	t.Setenv("QDRANT_COLLECTION", "issues")
 	t.Setenv("EMBEDDING_API_KEY", "embedding-key")
-	t.Setenv("LLM_API_KEY", "llm-key")
 
 	yamlContent := `qdrant:
   url: "${QDRANT_URL}"
@@ -268,8 +297,6 @@ func TestLoadValidatesExpandedEnvironmentVariables(t *testing.T) {
   collection: "${QDRANT_COLLECTION}"
 embedding:
   api_key: "${EMBEDDING_API_KEY}"
-llm:
-  api_key: "${LLM_API_KEY}"
 `
 
 	path := filepath.Join(t.TempDir(), "simili.yaml")
@@ -288,18 +315,56 @@ llm:
 	}
 }
 
+func TestPRCollectionIsOptional(t *testing.T) {
+	// Validate must pass even when PRCollection is empty — it is an optional field.
+	cfg := Config{
+		Qdrant: QdrantConfig{
+			URL:        "https://example.qdrant.io:6334",
+			APIKey:     "qdrant-key",
+			Collection: "issues",
+			// PRCollection intentionally omitted.
+		},
+		Embedding: EmbeddingConfig{
+			APIKey: "embedding-key",
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Expected no validation error when PRCollection is empty, got: %v", err)
+	}
+}
+
+func TestPRCollectionEnvExpansion(t *testing.T) {
+	t.Setenv("QDRANT_PR_COLLECTION", "simili_prs_v1")
+
+	yamlContent := `qdrant:
+  url: "http://localhost:6334"
+  api_key: "key"
+  collection: "issues"
+  pr_collection: "${QDRANT_PR_COLLECTION}"
+embedding:
+  api_key: "embedding-key"
+`
+	cfg, err := parseRaw([]byte(yamlContent))
+	if err != nil {
+		t.Fatalf("Failed to parse YAML: %v", err)
+	}
+	if cfg.Qdrant.PRCollection != "simili_prs_v1" {
+		t.Errorf("Expected PRCollection 'simili_prs_v1', got %q", cfg.Qdrant.PRCollection)
+	}
+}
+
 func TestLoadWithInheritanceValidatesMergedConfig(t *testing.T) {
+	// Child extends the parent but does not supply qdrant.collection.
+	// Validation must catch the missing required field in the merged result.
 	childContent := `extends: "org/repo@main"
 `
 
 	parentContent := `qdrant:
   url: "https://example.qdrant.io:6334"
   api_key: "qdrant-key"
-  collection: "issues"
+  collection: ""
 embedding:
   api_key: "embedding-key"
-llm:
-  api_key: ""
 `
 
 	path := filepath.Join(t.TempDir(), "simili.yaml")
@@ -317,7 +382,7 @@ llm:
 		t.Fatalf("Expected validation error, got nil")
 	}
 
-	wantErr := "config validation failed: llm.api_key is empty (check LLM_API_KEY environment variable)"
+	wantErr := "config validation failed: qdrant.collection is empty (check QDRANT_COLLECTION environment variable)"
 	if err.Error() != wantErr {
 		t.Fatalf("Expected error %q, got %q", wantErr, err.Error())
 	}
