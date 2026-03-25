@@ -220,25 +220,29 @@ func runProcess() {
 	if val := os.Getenv("QDRANT_URL"); val != "" && (qURL == "" || qURL == "localhost:6334") {
 		qURL = val
 	}
-	if qURL == "" {
-		qURL = "localhost:6334" // Default
-	}
 
 	qKey := cfg.Qdrant.APIKey
 	if val := os.Getenv("QDRANT_API_KEY"); val != "" && qKey == "" {
 		qKey = val
 	}
 
-	// Log Qdrant connection info (masked key)
-	if verbose {
-		fmt.Printf("Connecting to Qdrant at %s\n", qURL)
-	}
+	// Only initialize Qdrant if a real URL is configured (not empty, not default localhost)
+	if qURL != "" && qURL != "localhost:6334" {
+		// Log Qdrant connection info (masked key)
+		if verbose {
+			fmt.Printf("Connecting to Qdrant at %s\n", qURL)
+		}
 
-	qdrantClient, err := qdrant.NewClient(qURL, qKey)
-	if err == nil {
-		deps.VectorStore = qdrantClient
+		qdrantClient, err := qdrant.NewClient(qURL, qKey)
+		if err == nil {
+			deps.VectorStore = qdrantClient
+		} else {
+			fmt.Printf("Warning: Failed to initialize Qdrant client: %v\n", err)
+		}
 	} else {
-		fmt.Printf("Warning: Failed to initialize Qdrant client: %v\n", err)
+		if verbose {
+			fmt.Println("Qdrant not configured — skipping vector store initialization")
+		}
 	}
 
 	// GitHub Client
