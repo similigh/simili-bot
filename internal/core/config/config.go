@@ -263,25 +263,45 @@ func parseRaw(data []byte) (*Config, error) {
 // Note: llm.api_key is intentionally not required here — the process command
 // falls back to embedding.api_key when llm.api_key is unset, so rejecting the
 // entire config (and losing qdrant.collection) would be worse than proceeding.
+//
+// Qdrant and embedding fields are only required when VDB features are enabled.
+// Configs using only rule-based transfer do not need a vector database.
 func (c *Config) Validate() error {
-	requiredFields := []struct {
-		name   string
-		envVar string
-		value  string
-	}{
-		{name: "qdrant.url", envVar: "QDRANT_URL", value: c.Qdrant.URL},
-		{name: "qdrant.api_key", envVar: "QDRANT_API_KEY", value: c.Qdrant.APIKey},
-		{name: "qdrant.collection", envVar: "QDRANT_COLLECTION", value: c.Qdrant.Collection},
-		{name: "embedding.api_key", envVar: "EMBEDDING_API_KEY", value: c.Embedding.APIKey},
+	// Qdrant and embedding are only required when VDB routing is explicitly enabled
+	// or when no transfer strategy override is set (backward compat for existing configs
+	// that always had qdrant configured).
+	needsVDB := false
+	if c.Transfer.VDBRouting.Enabled != nil && *c.Transfer.VDBRouting.Enabled {
+		needsVDB = true
+	}
+	// Also require VDB if there are pipeline steps that explicitly need it
+	for _, step := range c.Steps {
+		if step == "similarity_search" || step == "indexer" || step == "duplicate_detector" {
+			needsVDB = true
+			break
+		}
 	}
 
-	for _, field := range requiredFields {
-		if strings.TrimSpace(field.value) == "" {
-			return fmt.Errorf(
-				"config validation failed: %s is empty (check %s environment variable)",
-				field.name,
-				field.envVar,
-			)
+	if needsVDB {
+		requiredFields := []struct {
+			name   string
+			envVar string
+			value  string
+		}{
+			{name: "qdrant.url", envVar: "QDRANT_URL", value: c.Qdrant.URL},
+			{name: "qdrant.api_key", envVar: "QDRANT_API_KEY", value: c.Qdrant.APIKey},
+			{name: "qdrant.collection", envVar: "QDRANT_COLLECTION", value: c.Qdrant.Collection},
+			{name: "embedding.api_key", envVar: "EMBEDDING_API_KEY", value: c.Embedding.APIKey},
+		}
+
+		for _, field := range requiredFields {
+			if strings.TrimSpace(field.value) == "" {
+				return fmt.Errorf(
+					"config validation failed: %s is empty (check %s environment variable)",
+					field.name,
+					field.envVar,
+				)
+			}
 		}
 	}
 
