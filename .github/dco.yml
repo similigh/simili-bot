@@ -1,0 +1,17 @@
+# Author: Sachindu Nethmin
+# GitHub: https://github.com/Sachindu-Nethmin
+# Created: 2026-02-21
+# Last Modified: 2026-02-21
+
+# DCO Bot Configuration
+# Docs: https://github.com/probot/dco
+
+# Require DCO sign-off on commits
+require:
+  members: true
+
+# Allow remediation commits so contributors can retroactively sign off
+# without rebasing their entire PR.
+allowRemediationCommits:
+  individual: true
+  thirdParty: true
