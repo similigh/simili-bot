@@ -9,6 +9,7 @@ require (
 	github.com/qdrant/go-client v1.15.2
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/oauth2 v0.27.0
+	golang.org/x/sync v0.18.0
 	google.golang.org/api v0.186.0
 	google.golang.org/grpc v1.71.0-dev
 	gopkg.in/yaml.v3 v3.0.1
@@ -41,7 +42,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.38.0 // indirect
 	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/net v0.33.0 // indirect
-	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
