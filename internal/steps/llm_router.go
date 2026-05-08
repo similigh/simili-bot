@@ -96,11 +96,24 @@ func (s *LLMRouter) Run(ctx *pipeline.Context) error {
 				ctx.Config.Transfer.RepoCollection)
 		} else {
 			// Generate embedding for issue to find relevant repos
+			// (reuse cached embedding from similarity_search if available)
 			issueContent := fmt.Sprintf("%s\n\n%s", ctx.Issue.Title, ctx.Issue.Body)
-			issueEmbedding, err := s.embedder.Embed(ctx.Ctx, issueContent)
+			var issueEmbedding []float32
+			if cached, ok := ctx.Metadata["issue_embedding"].([]float32); ok && len(cached) > 0 {
+				issueEmbedding = cached
+			} else {
+				var embErr error
+				issueEmbedding, embErr = s.embedder.Embed(ctx.Ctx, issueContent)
+				if embErr != nil {
+					log.Printf("[llm_router] Error generating issue embedding: %v (non-blocking)", embErr)
+					issueEmbedding = nil
+				} else {
+					ctx.Metadata["issue_embedding"] = issueEmbedding
+				}
+			}
 
-			if err != nil {
-				log.Printf("[llm_router] Error generating issue embedding: %v (non-blocking)", err)
+			if issueEmbedding == nil {
+				log.Printf("[llm_router] Embedding unavailable, skipping repo collection search")
 			} else {
 				// Search for relevant repository definitions
 				// Use broader threshold (0.5) and higher limit (10) to get context

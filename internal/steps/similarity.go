@@ -68,10 +68,18 @@ func (s *SimilaritySearch) Run(ctx *pipeline.Context) error {
 	// Create content for embedding
 	content := fmt.Sprintf("%s\n\n%s", ctx.Issue.Title, ctx.Issue.Body)
 
-	// Generate embedding
-	embedding, err := s.embedder.Embed(ctx.Ctx, content)
-	if err != nil {
-		return fmt.Errorf("failed to generate embedding: %w", err)
+	// Generate embedding (or reuse cached one)
+	var embedding []float32
+	if cached, ok := ctx.Metadata["issue_embedding"].([]float32); ok && len(cached) > 0 {
+		embedding = cached
+	} else {
+		var err error
+		embedding, err = s.embedder.Embed(ctx.Ctx, content)
+		if err != nil {
+			return fmt.Errorf("failed to generate embedding: %w", err)
+		}
+		// Cache for other steps (e.g. llm_router) to avoid redundant API calls
+		ctx.Metadata["issue_embedding"] = embedding
 	}
 
 	// Search in Qdrant
