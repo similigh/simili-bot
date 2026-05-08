@@ -72,9 +72,13 @@ func (r *VDBRouter) SuggestTransfer(ctx context.Context, issue *IssueInput, curr
 		return nil, nil
 	}
 
-	// Count issues per repo, excluding current repo
+	// Count issues per repo, excluding current repo.
+	// Deduplicate by issue number to prevent multi-chunk bias — bulk-indexed
+	// issues create multiple Qdrant points per issue, which would inflate
+	// the hit count for repos with bulk-indexed content.
 	repoCounts := make(map[string]int)
 	repoIDs := make(map[string][]string)
+	seenIssues := make(map[string]bool) // tracks "org/repo#number" to deduplicate
 	for _, res := range results {
 		org, _ := res.Payload["org"].(string)
 		repo, _ := res.Payload["repo"].(string)
@@ -85,6 +89,20 @@ func (r *VDBRouter) SuggestTransfer(ctx context.Context, issue *IssueInput, curr
 		if repoKey == currentRepo {
 			continue
 		}
+
+		// Deduplicate by issue number within each repo
+		var issueNum float64
+		if n, ok := res.Payload["issue_number"].(float64); ok {
+			issueNum = n
+		} else if n, ok := res.Payload["number"].(float64); ok {
+			issueNum = n
+		}
+		dedupeKey := fmt.Sprintf("%s#%.0f", repoKey, issueNum)
+		if seenIssues[dedupeKey] {
+			continue
+		}
+		seenIssues[dedupeKey] = true
+
 		repoCounts[repoKey]++
 		repoIDs[repoKey] = append(repoIDs[repoKey], res.ID)
 	}

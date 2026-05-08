@@ -46,12 +46,18 @@ func (m *mockVectorStore) Close() error { return nil }
 // --- helpers ---
 
 func makeResult(org, repo, id string, score float32) *qdrant.SearchResult {
+	// Derive a unique issue number from the ID so deduplication works correctly.
+	issueNum := 0
+	for _, c := range id {
+		issueNum = issueNum*10 + int(c-'0')
+	}
 	return &qdrant.SearchResult{
 		ID:    id,
 		Score: score,
 		Payload: map[string]interface{}{
-			"org":  org,
-			"repo": repo,
+			"org":          org,
+			"repo":         repo,
+			"issue_number": float64(issueNum), // JSON numbers decode as float64
 		},
 	}
 }
