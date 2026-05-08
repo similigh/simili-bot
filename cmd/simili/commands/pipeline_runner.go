@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -32,7 +33,7 @@ func (s *statusReportingStep) Run(ctx *pipeline.Context) error {
 	err := s.inner.Run(ctx)
 
 	if err != nil {
-		if err == pipeline.ErrSkipPipeline {
+		if errors.Is(err, pipeline.ErrSkipPipeline) {
 			fmt.Printf("⏭️ [%s] Skipped: %s\n", s.Name(), ctx.Result.SkipReason)
 			return err
 		}
@@ -84,7 +85,7 @@ func ExecutePipeline(ctx context.Context, issue *pipeline.Issue, cfg *config.Con
 	mainPipeline := pipeline.New(finalSteps...)
 
 	pipelineErr := mainPipeline.Run(pCtx)
-	if pipelineErr != nil && pipelineErr != pipeline.ErrSkipPipeline {
+	if pipelineErr != nil && !errors.Is(pipelineErr, pipeline.ErrSkipPipeline) {
 		return nil, fmt.Errorf("pipeline failed: %w", pipelineErr)
 	}
 
@@ -102,7 +103,7 @@ func ExecutePipeline(ctx context.Context, issue *pipeline.Issue, cfg *config.Con
 			} else {
 				s = &statusReportingStep{inner: step}
 			}
-			if err := s.Run(pCtx); err != nil && err != pipeline.ErrSkipPipeline {
+			if err := s.Run(pCtx); err != nil && !errors.Is(err, pipeline.ErrSkipPipeline) {
 				// Log but don't fail the overall result for post-pipeline steps
 				pCtx.Result.Errors = append(pCtx.Result.Errors, fmt.Sprintf("post-pipeline step '%s': %v", step.Name(), err))
 			}

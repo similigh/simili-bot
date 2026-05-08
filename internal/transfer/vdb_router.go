@@ -7,8 +7,10 @@ package transfer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 
 	"github.com/similigh/simili-bot/internal/integrations/ai"
 	"github.com/similigh/simili-bot/internal/integrations/qdrant"
@@ -92,10 +94,27 @@ func (r *VDBRouter) SuggestTransfer(ctx context.Context, issue *IssueInput, curr
 
 		// Deduplicate by issue number within each repo
 		var issueNum float64
-		if n, ok := res.Payload["issue_number"].(float64); ok {
-			issueNum = n
-		} else if n, ok := res.Payload["number"].(float64); ok {
-			issueNum = n
+		rawNum, hasNum := res.Payload["issue_number"]
+		if !hasNum {
+			rawNum, hasNum = res.Payload["number"]
+		}
+		if hasNum {
+			switch v := rawNum.(type) {
+			case float64:
+				issueNum = v
+			case int:
+				issueNum = float64(v)
+			case int64:
+				issueNum = float64(v)
+			case json.Number:
+				if f, err := v.Float64(); err == nil {
+					issueNum = f
+				}
+			case string:
+				if f, err := strconv.ParseFloat(v, 64); err == nil {
+					issueNum = f
+				}
+			}
 		}
 		dedupeKey := fmt.Sprintf("%s#%.0f", repoKey, issueNum)
 		if seenIssues[dedupeKey] {
