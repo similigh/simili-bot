@@ -32,7 +32,7 @@ func (s *QualityChecker) Name() string {
 // Run assesses issue quality.
 func (s *QualityChecker) Run(ctx *pipeline.Context) error {
 	// Only run on new issues, skip for comments/commands
-	if ctx.Issue.EventType == "issue_comment" {
+	if ctx.Issue.EventType == "issue_comment" || ctx.Issue.EventType == "pr_comment" {
 		return nil
 	}
 	if s.llm == nil {
