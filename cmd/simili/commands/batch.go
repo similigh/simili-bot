@@ -148,7 +148,8 @@ func runBatch(cmd *cobra.Command, args []string) {
 		cfg, err = config.LoadWithInheritance(cfgPath, fetcher)
 		if err != nil {
 			fmt.Printf("Warning: Failed to load config from %s: %v. Using defaults.\n", cfgPath, err)
-			cfg = &config.Config{}
+		cfg = &config.Config{}
+			cfg.ApplyDefaults()
 		} else if verbose {
 			fmt.Printf("Loaded config from %s\n", cfgPath)
 		}
@@ -157,6 +158,7 @@ func runBatch(cmd *cobra.Command, args []string) {
 			fmt.Println("No configuration file found. Using defaults and environment variables.")
 		}
 		cfg = &config.Config{}
+		cfg.ApplyDefaults()
 	}
 
 	// 3. Apply configuration overrides from flags
@@ -295,24 +297,28 @@ func initializeDependencies(cfg *config.Config) (*pipeline.Dependencies, error) 
 	if val := os.Getenv("QDRANT_URL"); val != "" && (qURL == "" || qURL == "localhost:6334") {
 		qURL = val
 	}
-	if qURL == "" {
-		qURL = "localhost:6334"
-	}
 
 	qKey := cfg.Qdrant.APIKey
 	if val := os.Getenv("QDRANT_API_KEY"); val != "" && qKey == "" {
 		qKey = val
 	}
 
-	if verbose {
-		fmt.Printf("✓ Connecting to Qdrant at %s\n", qURL)
-	}
+	// Only initialize Qdrant if a real URL is configured (not empty, not default localhost)
+	if qURL != "" && qURL != "localhost:6334" {
+		if verbose {
+			fmt.Printf("✓ Connecting to Qdrant at %s\n", qURL)
+		}
 
-	qdrantClient, err := qdrant.NewClient(qURL, qKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize Qdrant client: %w", err)
+		qdrantClient, err := qdrant.NewClient(qURL, qKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize Qdrant client: %w", err)
+		}
+		deps.VectorStore = qdrantClient
+	} else {
+		if verbose {
+			fmt.Println("ℹ Qdrant not configured — skipping vector store initialization")
+		}
 	}
-	deps.VectorStore = qdrantClient
 
 	// Initialize GitHub Client (optional)
 	token := os.Getenv("TRANSFER_TOKEN")
