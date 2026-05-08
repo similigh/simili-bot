@@ -137,13 +137,17 @@ func New(steps ...Step) *Pipeline {
 }
 
 // Run executes all steps in order.
-// Stops on the first error (unless it's ErrSkipPipeline, which is graceful).
+// Returns ErrSkipPipeline if a step requested a graceful early exit,
+// or a wrapped error if a step failed. The caller should treat
+// ErrSkipPipeline as non-fatal and decide whether to run post-pipeline
+// steps (like the indexer) regardless.
 func (p *Pipeline) Run(ctx *Context) error {
 	for _, step := range p.steps {
 		if err := step.Run(ctx); err != nil {
 			if errors.Is(err, ErrSkipPipeline) {
-				// Graceful early exit
-				return nil
+				// Return to caller so it can decide whether to
+				// run post-pipeline steps (e.g. indexer).
+				return ErrSkipPipeline
 			}
 			return fmt.Errorf("step '%s' failed: %w", step.Name(), err)
 		}

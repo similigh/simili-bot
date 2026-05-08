@@ -79,14 +79,28 @@ func (s *ActionExecutor) Run(ctx *pipeline.Context) error {
 	}
 
 	// 3. Apply labels
-	if len(ctx.Result.SuggestedLabels) > 0 {
-		err := s.client.AddLabels(ctx.Ctx, ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number, ctx.Result.SuggestedLabels)
+	// When a duplicate is detected, only apply the "potential-duplicate" label
+	// and skip triage labels (e.g. "bug", "enhancement") to avoid noise on
+	// an issue that will be auto-closed.
+	labelsToApply := ctx.Result.SuggestedLabels
+	if ctx.Result.IsDuplicate && len(labelsToApply) > 0 {
+		var filtered []string
+		for _, l := range labelsToApply {
+			if l == "potential-duplicate" {
+				filtered = append(filtered, l)
+			}
+		}
+		labelsToApply = filtered
+	}
+
+	if len(labelsToApply) > 0 {
+		err := s.client.AddLabels(ctx.Ctx, ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number, labelsToApply)
 		if err != nil {
 			log.Printf("[action_executor] Failed to add labels: %v", err)
 			ctx.Result.Errors = append(ctx.Result.Errors, err.Error())
 		} else {
-			log.Printf("[action_executor] Added labels: %v", ctx.Result.SuggestedLabels)
-			ctx.Result.LabelsApplied = ctx.Result.SuggestedLabels
+			log.Printf("[action_executor] Added labels: %v", labelsToApply)
+			ctx.Result.LabelsApplied = labelsToApply
 		}
 	}
 

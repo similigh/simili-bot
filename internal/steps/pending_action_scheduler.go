@@ -16,6 +16,14 @@ import (
 )
 
 // PendingActionScheduler schedules actions that could not be executed immediately.
+//
+// WARNING: This step writes pending actions to the local filesystem, which is
+// ephemeral in GitHub Actions (each run gets a fresh workspace). Pending actions
+// will be silently lost unless SIMILI_PENDING_STATE_DIR points to persistent
+// storage. For GitHub Actions, consider using the GitHubStateManager
+// (internal/core/state) which persists state to a dedicated orphan branch.
+//
+// TODO: Integrate GitHubStateManager so pending actions survive across runs.
 type PendingActionScheduler struct {
 	stateDir string
 }

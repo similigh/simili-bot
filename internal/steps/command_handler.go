@@ -78,10 +78,9 @@ func (s *CommandHandler) Run(ctx *pipeline.Context) error {
 			default:
 				log.Printf("[command_handler] Unknown command: %s", command)
 			}
-			// After processing a command, we might want to continue to ActionExecutor,
-			// but we definitely want to skip the intermediate triage steps.
-			// However, since we can't "jump", we let it return nil and other steps must skip comments.
-			return nil
+			// After processing a command, skip the triage pipeline —
+			// commands should not trigger similarity search, triage, etc.
+			return pipeline.ErrSkipPipeline
 		}
 
 		// Not a command? Skip the entire triage pipeline for comments.

@@ -250,8 +250,8 @@ func (ac *AutoCloser) hasHumanActivity(ctx context.Context, org, repo string, nu
 		if comment.User == nil || comment.Body == nil {
 			continue
 		}
-		// Skip comments outside the triage window (too old to be the triage comment)
-		if comment.CreatedAt != nil && comment.CreatedAt.Time.Before(triageWindow) {
+		// Skip comments outside the triage window (too old or newer than the label)
+		if comment.CreatedAt == nil || comment.CreatedAt.Time.Before(triageWindow) || comment.CreatedAt.Time.After(since) {
 			continue
 		}
 		if !isBotUser(comment.User.GetLogin(), ac.cfg.BotUsers) {

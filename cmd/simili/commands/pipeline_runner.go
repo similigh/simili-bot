@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -32,7 +33,7 @@ func (s *statusReportingStep) Run(ctx *pipeline.Context) error {
 	err := s.inner.Run(ctx)
 
 	if err != nil {
-		if err == pipeline.ErrSkipPipeline {
+		if errors.Is(err, pipeline.ErrSkipPipeline) {
 			fmt.Printf("⏭️ [%s] Skipped: %s\n", s.Name(), ctx.Result.SkipReason)
 			return err
 		}
@@ -53,31 +54,60 @@ func ExecutePipeline(ctx context.Context, issue *pipeline.Issue, cfg *config.Con
 	registry := pipeline.NewRegistry()
 	steps.RegisterAll(registry)
 
-	// Build the actual steps
-	builtSteps, err := registry.BuildFromNames(stepNames, deps)
+	// Separate indexer from the main pipeline so it always runs,
+	// even when the pipeline is gracefully skipped (e.g., gatekeeper
+	// skipping transferred issues). This ensures the VDB stays current.
+	var mainNames []string
+	var postNames []string
+	for _, name := range stepNames {
+		if name == "indexer" {
+			postNames = append(postNames, name)
+		} else {
+			mainNames = append(mainNames, name)
+		}
+	}
+
+	// Build the main pipeline steps
+	builtSteps, err := registry.BuildFromNames(mainNames, deps)
 	if err != nil {
 		return nil, fmt.Errorf("error building steps: %w", err)
 	}
 
 	var finalSteps []pipeline.Step
 	if silent {
-		// Use steps as-is without status reporting
 		finalSteps = builtSteps.Steps()
 	} else {
-		// Wrap steps with status reporting
 		for _, step := range builtSteps.Steps() {
 			finalSteps = append(finalSteps, &statusReportingStep{inner: step})
 		}
 	}
 
-	finalPipeline := pipeline.New(finalSteps...)
+	mainPipeline := pipeline.New(finalSteps...)
 
-	if err := finalPipeline.Run(pCtx); err != nil {
-		// ErrSkipPipeline is not an error, just a graceful exit
-		if err == pipeline.ErrSkipPipeline {
-			return pCtx.Result, nil
+	pipelineErr := mainPipeline.Run(pCtx)
+	if pipelineErr != nil && !errors.Is(pipelineErr, pipeline.ErrSkipPipeline) {
+		return nil, fmt.Errorf("pipeline failed: %w", pipelineErr)
+	}
+
+	// Always run post-pipeline steps (indexer) — even after ErrSkipPipeline.
+	// The indexer handles its own skip logic (e.g., skipping if transferred).
+	if len(postNames) > 0 {
+		postSteps, err := registry.BuildFromNames(postNames, deps)
+		if err != nil {
+			return nil, fmt.Errorf("error building post-pipeline steps: %w", err)
 		}
-		return nil, fmt.Errorf("pipeline failed: %w", err)
+		for _, step := range postSteps.Steps() {
+			var s pipeline.Step
+			if silent {
+				s = step
+			} else {
+				s = &statusReportingStep{inner: step}
+			}
+			if err := s.Run(pCtx); err != nil && !errors.Is(err, pipeline.ErrSkipPipeline) {
+				// Log but don't fail the overall result for post-pipeline steps
+				pCtx.Result.Errors = append(pCtx.Result.Errors, fmt.Sprintf("post-pipeline step '%s': %v", step.Name(), err))
+			}
+		}
 	}
 
 	return pCtx.Result, nil

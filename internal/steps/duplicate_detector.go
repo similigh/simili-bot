@@ -39,7 +39,7 @@ func (s *DuplicateDetector) Name() string {
 // Run analyzes similar issues for duplicates.
 func (s *DuplicateDetector) Run(ctx *pipeline.Context) error {
 	// Only run on new issues, skip for comments/commands
-	if ctx.Issue.EventType == "issue_comment" {
+	if ctx.Issue.EventType == "issue_comment" || ctx.Issue.EventType == "pr_comment" {
 		return nil
 	}
 	if s.llm == nil {

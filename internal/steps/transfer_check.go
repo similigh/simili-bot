@@ -52,6 +52,12 @@ func (s *TransferCheck) Run(ctx *pipeline.Context) error {
 		return nil
 	}
 
+	// Skip if a previous step (e.g. llm_router) already determined the transfer target
+	if ctx.TransferTarget != "" {
+		log.Printf("[transfer_check] Transfer already determined (%s), skipping", ctx.TransferTarget)
+		return nil
+	}
+
 	// Check if transfer is blocked (e.g. by undo history)
 	if blocked, _ := ctx.Metadata["transfer_blocked"].(bool); blocked {
 		log.Printf("[transfer_check] Transfer blocked by metadata flag")
@@ -172,6 +178,11 @@ func setTransferTarget(ctx *pipeline.Context, target, method string, confidence 
 	if reasoning != "" {
 		ctx.Result.TransferReason = reasoning
 	}
+
+	// Store the current repo as original_repo so that response_builder can
+	// correctly display "Transferred from <source>" regardless of whether the
+	// transfer was determined by llm_router or transfer_check.
+	ctx.Metadata["original_repo"] = fmt.Sprintf("%s/%s", ctx.Issue.Org, ctx.Issue.Repo)
 
 	ctx.Metadata["transfer_method"] = method
 	ctx.Metadata["transfer_confidence"] = confidence

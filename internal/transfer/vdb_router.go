@@ -7,8 +7,10 @@ package transfer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 
 	"github.com/similigh/simili-bot/internal/integrations/ai"
 	"github.com/similigh/simili-bot/internal/integrations/qdrant"
@@ -72,9 +74,13 @@ func (r *VDBRouter) SuggestTransfer(ctx context.Context, issue *IssueInput, curr
 		return nil, nil
 	}
 
-	// Count issues per repo, excluding current repo
+	// Count issues per repo, excluding current repo.
+	// Deduplicate by issue number to prevent multi-chunk bias — bulk-indexed
+	// issues create multiple Qdrant points per issue, which would inflate
+	// the hit count for repos with bulk-indexed content.
 	repoCounts := make(map[string]int)
 	repoIDs := make(map[string][]string)
+	seenIssues := make(map[string]bool) // tracks "org/repo#number" to deduplicate
 	for _, res := range results {
 		org, _ := res.Payload["org"].(string)
 		repo, _ := res.Payload["repo"].(string)
@@ -85,6 +91,37 @@ func (r *VDBRouter) SuggestTransfer(ctx context.Context, issue *IssueInput, curr
 		if repoKey == currentRepo {
 			continue
 		}
+
+		// Deduplicate by issue number within each repo
+		var issueNum float64
+		rawNum, hasNum := res.Payload["issue_number"]
+		if !hasNum {
+			rawNum, hasNum = res.Payload["number"]
+		}
+		if hasNum {
+			switch v := rawNum.(type) {
+			case float64:
+				issueNum = v
+			case int:
+				issueNum = float64(v)
+			case int64:
+				issueNum = float64(v)
+			case json.Number:
+				if f, err := v.Float64(); err == nil {
+					issueNum = f
+				}
+			case string:
+				if f, err := strconv.ParseFloat(v, 64); err == nil {
+					issueNum = f
+				}
+			}
+		}
+		dedupeKey := fmt.Sprintf("%s#%.0f", repoKey, issueNum)
+		if seenIssues[dedupeKey] {
+			continue
+		}
+		seenIssues[dedupeKey] = true
+
 		repoCounts[repoKey]++
 		repoIDs[repoKey] = append(repoIDs[repoKey], res.ID)
 	}

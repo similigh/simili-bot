@@ -97,6 +97,7 @@ func runProcess() {
 		if err != nil {
 			fmt.Printf("Warning: Failed to load config from %s: %v. Proceeding with defaults/env vars.\n", actualCfgPath, err)
 			cfg = &config.Config{} // Fallback to empty config
+			cfg.ApplyDefaults()
 		} else {
 			if verbose {
 				fmt.Printf("Loaded config from %s\n", actualCfgPath)
@@ -108,6 +109,7 @@ func runProcess() {
 			fmt.Println("No configuration file found. Using defaults and environment variables.")
 		}
 		cfg = &config.Config{}
+		cfg.ApplyDefaults()
 	}
 	// Apply defaults just in case
 	// Note: applyDefaults is private in config package, ensuring config.Load* handles it.
@@ -405,13 +407,21 @@ func enrichIssueFromGitHubEvent(issue *pipeline.Issue, raw map[string]interface{
 	}
 
 	// Fall back to sender.login so the gatekeeper can filter bot-triggered
-	// pull_request.edited (and similar) events, not just issue_comment events.
-	// CommentAuthor is already set for issue_comment events; for all other event
-	// types it remains empty and the gatekeeper's bot-author check is skipped.
+	// events, not just issue_comment events.
+	// ONLY set for events where the sender is the primary actor (opened,
+	// edited, closed, reopened). For events like "labeled" or "assigned",
+	// the sender may be an automation (e.g., labeler bot) while the issue
+	// was created by a human — incorrectly filtering these would prevent
+	// legitimate issues from being triaged.
 	if issue.CommentAuthor == "" {
-		if sender, ok := raw["sender"].(map[string]interface{}); ok {
-			if login, ok := sender["login"].(string); ok {
-				issue.CommentAuthor = login
+		action := issue.EventAction
+		isPrimaryAction := action == "opened" || action == "edited" ||
+			action == "closed" || action == "reopened"
+		if isPrimaryAction {
+			if sender, ok := raw["sender"].(map[string]interface{}); ok {
+				if login, ok := sender["login"].(string); ok {
+					issue.CommentAuthor = login
+				}
 			}
 		}
 	}
