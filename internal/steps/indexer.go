@@ -116,24 +116,26 @@ func (s *Indexer) Run(ctx *pipeline.Context) error {
 		itemType = "pull_request"
 	}
 
-	// Generate deterministic UUID
-	uniqueID := fmt.Sprintf("%s-%s-%d", ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number)
-	uuidID := uuid.NewMD5(uuid.NameSpaceURL, []byte(uniqueID)).String()
+	// Generate deterministic UUID using the same format as the bulk indexer
+	// (index.go) so that pipeline-indexed and bulk-indexed issues share the
+	// same Qdrant point ID and don't create duplicates.
+	uuidID := uuid.NewMD5(uuid.NameSpaceURL, fmt.Appendf(nil, "%s/%s#%d-chunk-0", ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number)).String()
 
 	// Prepare point for Qdrant
 	point := &qdrant.Point{
 		ID:     uuidID,
 		Vector: embedding,
 		Payload: map[string]any{
-			"org":    ctx.Issue.Org,
-			"repo":   ctx.Issue.Repo,
-			"number": ctx.Issue.Number,
-			"title":  ctx.Issue.Title,
-			"url":    ctx.Issue.URL,
-			"state":  ctx.Issue.State,
-			"author": ctx.Issue.Author,
-			"labels": ctx.Issue.Labels,
-			"type":   itemType,
+			"org":          ctx.Issue.Org,
+			"repo":         ctx.Issue.Repo,
+			"issue_number": ctx.Issue.Number,
+			"title":        ctx.Issue.Title,
+			"text":         content, // Store embedding text so similarity search can surface it
+			"url":          ctx.Issue.URL,
+			"state":        ctx.Issue.State,
+			"author":       ctx.Issue.Author,
+			"labels":       ctx.Issue.Labels,
+			"type":         itemType,
 		},
 	}
 
@@ -151,8 +153,7 @@ func (s *Indexer) Run(ctx *pipeline.Context) error {
 
 // updateState patches only the "state" field in Qdrant for an existing point.
 func (s *Indexer) updateState(ctx *pipeline.Context, collectionName string) error {
-	uniqueID := fmt.Sprintf("%s-%s-%d", ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number)
-	uuidID := uuid.NewMD5(uuid.NameSpaceURL, []byte(uniqueID)).String()
+	uuidID := uuid.NewMD5(uuid.NameSpaceURL, fmt.Appendf(nil, "%s/%s#%d-chunk-0", ctx.Issue.Org, ctx.Issue.Repo, ctx.Issue.Number)).String()
 
 	err := s.store.SetPayload(ctx.Ctx, collectionName, uuidID, map[string]interface{}{
 		"state": ctx.Issue.State,

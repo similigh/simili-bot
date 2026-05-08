@@ -7,7 +7,6 @@ package commands
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"log"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	similiConfig "github.com/similigh/simili-bot/internal/core/config"
 	"github.com/similigh/simili-bot/internal/integrations/ai"
 	similiGithub "github.com/similigh/simili-bot/internal/integrations/github"
@@ -137,8 +137,7 @@ func runLearn(cmd *cobra.Command, args []string) {
 	// 7. Create Point with Rich Payload
 	// Use deterministic ID based on org/repo/file to enable idempotent updates
 	idKey := fmt.Sprintf("%s/%s/%s", learnOrg, learnRepo, cleanPath)
-	hash := sha256.Sum256([]byte(idKey))
-	deterministicID := fmt.Sprintf("%x", hash[:16]) // Use first 16 bytes for UUID-like format
+	deterministicID := uuid.NewMD5(uuid.NameSpaceURL, []byte(idKey)).String()
 
 	point := &qdrant.Point{
 		ID:     deterministicID,
